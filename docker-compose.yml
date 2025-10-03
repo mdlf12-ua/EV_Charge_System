@@ -6,8 +6,11 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: 123456
-      MYSQL_DATABASE: banco
+      MYSQL_DATABASE: database
       MYSQL_USER: usuario
       MYSQL_PASSWORD: contraseña
     ports:
       - "3307:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
