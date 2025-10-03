@@ -1,6 +1,6 @@
 import socket 
 import threading
-
+import mysql.connector
 
 HEADER = 64
 PORT = 7777
@@ -10,6 +10,33 @@ FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 2
 
+central_cps = {}
+
+def search_CP():
+    conexion = mysql.connector.connect(
+        host="localhost",        # Si el .py está en el mismo PC. Si está en otro, usa la IP del servidor con Docker.
+        port=3307,               # El puerto que expusiste en docker-compose
+        user="usuario",
+        password="contraseña",
+        database="database"
+    )
+    cursor = conexion.cursor()
+    cursor.execute("SELECT * FROM ChargingPoint")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        central_cps[row["ID"]] = {
+            "ID": row["ID"],
+            "Ubicacion": row["Ubicacion"],
+            "PRECIO": row["PRECIO"],
+            "ESTADO": 'Parado',
+            "CONDUCTOR_ID": row["CONDUCTOR_ID"],
+            "CONSUMO_KW": row["CONSUMO_KW"],
+            "IMPORTE_EU": row["IMPORTE_EU"]
+        }
+
+    conexion.close()
+    print(f"[CENTRAL] Cargados {len(central_cps)} CPs desde la BD.")
 
 
 #Función que utilizara cada hilo para antender a un cliente
@@ -42,9 +69,8 @@ def handle_client(conn, addr):
     print("ADIOS. TE ESPERO EN OTRA OCASION")
     conn.close()
     
-        
 
-def start():
+def start_socket():
     #El servidor escucha:
     server.listen()
     print(f"[LISTENING] Servidor a la escucha en {SERVER}")
@@ -82,5 +108,8 @@ server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(ADDR)
 
 print("[STARTING] Servidor inicializándose...")
+search_CP()
 
-start()
+
+t1 = threading.Thread(target=start_socket, daemon=True)
+t1.start()
