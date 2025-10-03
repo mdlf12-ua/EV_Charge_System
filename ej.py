@@ -6,7 +6,7 @@ conexion = mysql.connector.connect(
     port=3307,               # El puerto que expusiste en docker-compose
     user="usuario",
     password="contraseña",
-    database="banco"
+    database="database"
 )
 
 cursor = conexion.cursor()
