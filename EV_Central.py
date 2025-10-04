@@ -3,7 +3,7 @@ import threading
 import mysql.connector
 
 HEADER = 64
-PORT = 7777
+PORT = 5000
 SERVER = socket.gethostbyname(socket.gethostname())
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
