@@ -13,4 +13,16 @@ services:
       - "3307:3306"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-
+  ev_central:
+    build: .
+    container_name: ev-central
+    depends_on:
+      - mysql
+    ports:
+      - "5000:5000"  # o el puerto que use tu socket
+    environment:
+      DB_HOST: mysql          # ← nombre del servicio MySQL (Docker DNS lo resuelve)
+      DB_PORT: 3306
+      DB_USER: usuario
+      DB_PASSWORD: contraseña
+      DB_NAME: database
