@@ -1,6 +1,8 @@
 import socket 
 import threading
 import mysql.connector
+import os
+import time
 
 HEADER = 64
 PORT = 5000
@@ -13,14 +15,29 @@ MAX_CONEXIONES = 2
 central_cps = {}
 
 def search_CP():
-    conexion = mysql.connector.connect(
-        host="localhost",        # Si el .py está en el mismo PC. Si está en otro, usa la IP del servidor con Docker.
-        port=3307,               # El puerto que expusiste en docker-compose
-        user="usuario",
-        password="contraseña",
-        database="database"
-    )
-    cursor = conexion.cursor()
+
+    DB_HOST = os.getenv("DB_HOST", "mysql")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_USER = os.getenv("DB_USER", "usuario")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
+    DB_NAME = os.getenv("DB_NAME", "database")
+
+    while True:
+        try:
+            conexion = mysql.connector.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                database=DB_NAME
+            )
+            print("Conectado a MySQL")
+            break
+        except mysql.connector.Error as err:
+            print(f"No se pudo conectar a MySQL, reintentando en 5 segundos... ({err})")
+            time.sleep(5)
+
+    cursor = conexion.cursor(dictionary=True)
     cursor.execute("SELECT * FROM ChargingPoint")
     rows = cursor.fetchall()
 
@@ -34,6 +51,7 @@ def search_CP():
             "CONSUMO_KW": row["CONSUMO_KW"],
             "IMPORTE_EU": row["IMPORTE_EU"]
         }
+
 
     conexion.close()
     print(f"[CENTRAL] Cargados {len(central_cps)} CPs desde la BD.")
@@ -109,7 +127,7 @@ server.bind(ADDR)
 
 print("[STARTING] Servidor inicializándose...")
 search_CP()
+print("ACABO")
 
-
-t1 = threading.Thread(target=start_socket, daemon=True)
-t1.start()
+#t1 = threading.Thread(target=start_socket, daemon=True)
+#t1.start()
