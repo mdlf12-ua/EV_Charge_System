@@ -35,91 +35,85 @@ def send_msg(conn, msg):
     conn.send(send_length)
     conn.send(message)
 
+def receive_msg(socket):
+    try:
+        length = int(socket.recv(HEADER).decode(FORMAT).strip())
+        return socket.recv(length).decode(FORMAT)
+    except:
+        return None
 
-def handle_client(conn, ip):
+def engine_bucle(conn, ip):
 
     global cp_state
-    print(f"[NUEVA CONEXION] {ip} connected.")
 
-    connected = True
-    while connected:
-        msg_length = conn.recv(HEADER).decode(FORMAT)
-
-        if msg_length:
-            msg_length = int(msg_length)
-            msg = conn.recv(msg_length).decode(FORMAT)
-
-            if msg == FIN:
-                connected = False
-                print("[ENGINE] Monitor desconectado")
-
-            elif msg=="HEALTHSTATUS":
-                send_msg(conn, cp_state["health_status"])
-
-            elif msg=="STOP":
-
-                print("[ENGINE] Central ordena que paremos")
-                # if cp_state["suministro_activo"]:
-                #     cp_state["suministro_activo"]=
-                cp_state["status"]="PARADO"
-                cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por central")
-                #kafka
-                send_msg(conn, "OK")
-
-
-
-            elif msg=="CONTINUE":
-
-                print("[ENGINE] Central ordena que reanudemos")
-                cp_state["status"]="ACTIVADO"
-                cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por central")
-                #kafka
-                send_msg(conn, "OK")
-
-            #msg==registrar
-
-            else:
-                print("[ENGINE] Mensaje no reconocido")
-                send_msg(conn, "ERROR: Mensaje no reconocido")
-
-    print("CERRANDO CONEXIÓN CON EL CLIENTE")
-    conn.close()
-
-
-
-def start_server(ip, port):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((ip, port))
-    server.listen()
-    print(f"[ENGINE] Servidor a la escucha en {ip}")
-
-    CONEX_ACTIVAS = threading.active_count()-1
-    print(CONEX_ACTIVAS)
     while True:
-        conn, addr = server.accept()
-        CONEX_ACTIVAS = threading.active_count()
-        if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
-            thread = threading.Thread(target=handle_client, args=(conn, addr))
-            thread.start()
-            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
-        else:
-            print("DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
-            conn.send("DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
-            conn.close()
-            CONEX_ACTUALES = threading.active_count()-1
+
+        try:
+
+            print(f"\n[ENGINE] Conectando al Monitor {ip}:{port}...")
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client.connect((ip, port))
+            print("[ENGINE] Conectado al Monitor, a la espera de mensajes\n")
+
+            connected = True
+            while connected:
+
+                msg = receive_msg(client)
+
+                if not msg:
+                    print("[ENGINE] Monitor desconectado, no hay conexión")
+                    return
+
+                if msg == FIN:
+                    connected = False
+                    print("[ENGINE] Monitor desconectado con FIN")
+
+                elif msg=="HEALTHSTATUS":
+                    send_msg(conn, cp_state["health_status"])
+
+                elif msg=="STOP":
+
+                    print("[ENGINE] Central ordena que paremos")
+                    # if cp_state["suministro_activo"]:
+                    #     cp_state["suministro_activo"]=
+                    cp_state["status"]="PARADO"
+                    cp_state["health_status"] = "OK"
+                    print("[ENGINE] CP Parado por central")
+                    #kafka
+                    send_msg(conn, "OK")
 
 
 
+                elif msg=="CONTINUE":
+
+                    print("[ENGINE] Central ordena que reanudemos")
+                    cp_state["status"]="ACTIVADO"
+                    cp_state["health_status"] = "OK"
+                    print("[ENGINE] CP Parado por central")
+                    #kafka
+                    send_msg(conn, "OK")
+
+                    #msg==registrar
+
+                else:
+                    print("[ENGINE] Mensaje no reconocido")
+                    send_msg(conn, "ERROR: Mensaje no reconocido")
+
+
+
+        except ConnectionRefusedError:
+            print(f"[ENGINE] No se puede conectar con el Monitor ({ip}:{port})")
+            return
+        except Exception as e:
+            print(f"[ENGINE] Error: {e}")
+            return
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Uso: python EV_CP_E.py <IP> <PORT>")
+        print("ERROR Argumentos: EV_CP_E.py <IP> <PORT>")
         sys.exit(1)
 
     ip = sys.argv[1]
     port = int(sys.argv[2])
-    start_server(ip, port)
+    engine_bucle(ip, port)
