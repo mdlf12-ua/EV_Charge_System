@@ -63,7 +63,30 @@ def noti_recuperacion(central_socket, motivo):
 
 
 def conectar_central(central_ip, central_port):
-    print(f"[MONITOR] Conectando al Engine ({engine_ip}:{engine_port})...")
+    central_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        central_socket.connect((central_ip, central_port))
+        print(f"[MONITOR] Conectando al la Central ({central_ip}:{central_port})...")
+
+        respuesta=central_socket.recv(4096)
+        print(respuesta.decode(FORMAT))
+        #AQUI TENDRIAMOS QUE MANDAR LA INFORMACIÓN DE NUESTRA CP A LA CENTRAL
+        #[ID] [Ubicación] [Estado] [Precio]
+        mens =""
+        mens= input()
+        send_msg(mens)
+        #Con el método send, enviamos el mensaje
+        #Cerramos la instancia del cliente servidor
+        respuesta=central_socket.recv(4096)
+        
+        print(respuesta.decode(FORMAT))
+        central_socket.close()
+
+        print("Conexión cerrada")
+
+    except Exception as e:
+        print("Error al conectar:", e)
+
     central_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     central_socket.connect((central_ip, central_port))
 
@@ -134,6 +157,6 @@ if __name__ == "__main__":
     print(f"Central: {central_ip}:{central_port}\n")
 
     central_socket = conectar_central(central_ip, central_port)
-    engine_socket = conectar_engine(engine_ip, engine_port)
+    #engine_socket = conectar_engine(engine_ip, engine_port)
     #registro?
-    healthstatus_periodico(engine_socket, central_socket)
+    #healthstatus_periodico(engine_socket, central_socket)
