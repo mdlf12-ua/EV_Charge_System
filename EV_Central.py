@@ -1,5 +1,6 @@
 import socket 
 import threading
+from threading import Lock
 import mysql.connector
 import os
 import time
@@ -13,6 +14,7 @@ FIN = "FIN"
 MAX_CONEXIONES = 2
 
 central_cps = {}
+lock = Lock()
 
 def search_CP():
 
@@ -92,9 +94,10 @@ def handle_CP(conn, addr):
             "CONSUMO_KW": None,
             "IMPORTE_EU": None
         }
+        #Esperamos a que se desbloquee el acceso a central_cps para poder acceder a el.
+        with lock:
+            central_cps[cp_id] = nuevo
 
-        central_cps[cp_id] = nuevo
-        
         print(f"ID: {cp_id}")
         print(f"Ubicación: {ubicacion}")
         print(f"Estado: {estado}")
