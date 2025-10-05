@@ -3,7 +3,7 @@ import threading
 import mysql.connector
 import os
 import time
-
+import sys
 HEADER = 64
 PORT = 5000
 SERVER = socket.gethostbyname(socket.gethostname())
@@ -58,36 +58,52 @@ def search_CP():
 
 
 #Función que utilizara cada hilo para antender a un cliente
-def handle_client(conn, addr):
+def handle_CP(conn, addr):
     print(f"[NUEVA CONEXION] {addr} connected.")
     #############################################
     #Aqui explicariamos al cliente el protocolo #
     #############################################
-    conn.send(f"Bienvenido Cliente: Este Servidor codifica tu mensaje.".encode(FORMAT))
-    connected = True
-    while connected:
-        #El cliente envia dos mensajes, la longitud real del mensaje:
-        msg_length = conn.recv(HEADER).decode(FORMAT)
-        #si hay mensaje
-        if msg_length:
-            msg_length = int(msg_length)
-            #El mensaje real:
-            msg = conn.recv(msg_length).decode(FORMAT)
-            if msg == FIN:
-                connected = False
-            #############################################
-            #Aqui iniciaria el protocolo                #
-            #############################################
-            result = ""
-            for char in msg:
-                result += chr(ord(char) + 3)
-            
-            print(f" He recibido del cliente [{addr}] el mensaje: {msg}, codificado: {result}")
-            conn.send(f"HOLA CLIENTE: Tu mensaje codificado es: {result} ".encode(FORMAT))
-    print("ADIOS. TE ESPERO EN OTRA OCASION")
+
+    #El cliente envia dos mensajes, la longitud real del mensaje:
+    msg_length = conn.recv(HEADER).decode(FORMAT)
+    #si hay mensaje
+    if msg_length:
+        msg_length = int(msg_length)
+        #El mensaje real:
+        msg = conn.recv(msg_length).decode(FORMAT)
+        #############################################
+        #Aqui iniciaria el protocolo                #
+        #############################################
+        partes = msg.split()
+
+        # Asignamos cada campo según el orden definido
+        cp_id = int(partes[0])
+        ubicacion = partes[1]
+        estado = partes[2]
+        precio = float(partes[3])
+
+        nuevo = {
+            "ID": cp_id,
+            "Ubicacion": ubicacion,
+            "PRECIO": precio,
+            "ESTADO": estado,
+            # Si no vienen en el mensaje, los mantenemos si existen o ponemos None
+            "CONDUCTOR_ID": None,
+            "CONSUMO_KW": None,
+            "IMPORTE_EU": None
+        }
+
+        central_cps[cp_id] = nuevo
+        
+        print(f"ID: {cp_id}")
+        print(f"Ubicación: {ubicacion}")
+        print(f"Estado: {estado}")
+        print(f"Precio: {precio:.2f} €/kWh")
+
+        print(" He recibido del cliente [{addr}] el mensaje: {msg}")
+
     conn.close()
     
-
 def start_socket():
     #El servidor escucha:
     server.listen()
@@ -107,7 +123,7 @@ def start_socket():
         #Si no hemos sobrepasado el maximo numero de conexiones, podemos crear el thread
         if (CONEX_ACTIVAS <= MAX_CONEXIONES):
             #Creamos el Thread, target: la funcion o protocolo que atendera al cliente, args: los argumentos de la funcion 
-            thread = threading.Thread(target=handle_client, args=(conn, addr))
+            thread = threading.Thread(target=handle_CP, args=(conn, addr))
             thread.start()
             print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
             print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
@@ -119,7 +135,14 @@ def start_socket():
         
 
 ######################### MAIN ##########################
-
+'''
+if len(sys.argv) == 4:
+    port = int(sys.argv[1])
+    ip_broker = sys.argv[2]
+    puerto_broker = int(sys.argv[3])
+else:
+    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [IP Broker] [Puerto Broker]")
+'''
 #Creamos el servidor
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 #Bindeamos el localHost y el puerto
@@ -129,5 +152,7 @@ print("[STARTING] Servidor inicializándose...")
 search_CP()
 print("ACABO")
 
-#t1 = threading.Thread(target=start_socket, daemon=True)
-#t1.start()
+t1 = threading.Thread(target=start_socket, daemon=True)
+t1.start()
+
+print("ACABO")
