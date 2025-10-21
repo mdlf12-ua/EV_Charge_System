@@ -5,7 +5,9 @@ import sys
 from kafka import KafkaConsumer 
 import json
 from kafka import KafkaProducer
-
+#Tipo mensajes kafka: cp-estado
+#                     cp-ordenes
+#
 
 FORMAT = 'utf-8'
 HEADER = 64
@@ -172,7 +174,7 @@ def handle_kafka_message(message):
                 print("[ENGINE] CP fuera de servicio (OoO)\n")
 
                 #Notificar a Central
-                send_to_kafka('cp-status', {
+                send_to_kafka('cp-estado', {
                 "cp_id": cp_state["cp_id"],
                 "status": "PARADO",
                 "timestamp": time.time(),
@@ -187,7 +189,7 @@ def handle_kafka_message(message):
             print("[ENGINE] CP activado y disponible\n")
 
             #Notificar a Central
-            send_to_kafka('cp-status', {
+            send_to_kafka('cp-estado', {
                 "cp_id": cp_state["cp_id"],
                 "status": "ACTIVADO",
                 "timestamp": time.time(),
