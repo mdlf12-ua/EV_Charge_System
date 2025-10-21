@@ -67,43 +67,45 @@ def handle_CP(conn, addr):
     #############################################
 
     #El cliente envia dos mensajes, la longitud real del mensaje:
-    msg_length = conn.recv(HEADER).decode(FORMAT)
-    #si hay mensaje
-    if msg_length:
-        msg_length = int(msg_length)
-        #El mensaje real:
-        msg = conn.recv(msg_length).decode(FORMAT)
-        #############################################
-        #Aqui iniciaria el protocolo                #
-        #############################################
-        partes = msg.split()
+    while True:
+        msg_length = conn.recv(HEADER).decode(FORMAT)
+        #si hay mensaje
+        if msg_length:
+            msg_length = int(msg_length)
+            #El mensaje real:
+            msg = conn.recv(msg_length).decode(FORMAT)
+            #############################################
+            #Aqui iniciaria el protocolo                #
+            #############################################
+            partes = msg.split()
 
-        # Asignamos cada campo según el orden definido
-        cp_id = int(partes[0])
-        ubicacion = partes[1]
-        estado = partes[2]
-        precio = float(partes[3])
+            # Asignamos cada campo según el orden definido
+            cp_id = int(partes[0])
+            ubicacion = partes[1]
+            estado = partes[2]
+            precio = float(partes[3])
 
-        nuevo = {
-            "ID": cp_id,
-            "Ubicacion": ubicacion,
-            "PRECIO": precio,
-            "ESTADO": estado,
-            # Si no vienen en el mensaje, los mantenemos si existen o ponemos None
-            "CONDUCTOR_ID": None,
-            "CONSUMO_KW": None,
-            "IMPORTE_EU": None
-        }
-        #Esperamos a que se desbloquee el acceso a central_cps para poder acceder a el.
-        with lock:
-            central_cps[cp_id] = nuevo
+            nuevo = {
+                "ID": cp_id,
+                "Ubicacion": ubicacion,
+                "PRECIO": precio,
+                "ESTADO": estado,
+                # Si no vienen en el mensaje, los mantenemos si existen o ponemos None
+                "CONDUCTOR_ID": None,
+                "CONSUMO_KW": None,
+                "IMPORTE_EU": None
+            }
+            #Esperamos a que se desbloquee el acceso a central_cps para poder acceder a el.
+            with lock:
+                central_cps[cp_id] = nuevo
+            if estado == "Desconectado":
+                break
+            print(f"ID: {cp_id}")
+            print(f"Ubicación: {ubicacion}")
+            print(f"Estado: {estado}")
+            print(f"Precio: {precio:.2f} €/kWh")
 
-        print(f"ID: {cp_id}")
-        print(f"Ubicación: {ubicacion}")
-        print(f"Estado: {estado}")
-        print(f"Precio: {precio:.2f} €/kWh")
-
-        print(" He recibido del cliente [{addr}] el mensaje: {msg}")
+            print(" He recibido del cliente [{addr}] el mensaje: {msg}")
 
     conn.close()
     
@@ -157,5 +159,6 @@ print("ACABO")
 
 t1 = threading.Thread(target=start_socket, daemon=True)
 t1.start()
+t1.join()
 
 print("ACABO")
