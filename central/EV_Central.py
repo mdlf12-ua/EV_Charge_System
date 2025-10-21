@@ -7,7 +7,7 @@ import time
 import sys
 HEADER = 64
 PORT = 5000
-SERVER = socket.gethostbyname(socket.gethostname())
+SERVER = "0.0.0.0"
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
