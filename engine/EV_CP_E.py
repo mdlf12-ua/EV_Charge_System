@@ -2,11 +2,16 @@ import socket
 import threading
 import time
 import sys
+from kafka import KafkaConsumer 
+import json
+from kafka import KafkaProducer
+
 
 FORMAT = 'utf-8'
 HEADER = 64
 MAX_CONEXIONES = 20
 FIN = "FIN"
+TIMEAUT=5000 #in miliseconds
 
 kafka_producer = None
 kafka_consumer = None
@@ -35,16 +40,11 @@ def send_msg(conn, msg):
     conn.send(send_length)
     conn.send(message)
 
-def receive_msg(socket):
-    try:
-        length = int(socket.recv(HEADER).decode(FORMAT).strip())
-        return socket.recv(length).decode(FORMAT)
-    except:
-        return None
 
-def engine_bucle(conn, ip):
+def handle_client(conn, ip):
 
     global cp_state
+    print(f"[NUEVA CONEXION] {ip} connected.")
 
     connected = True
     while connected:
@@ -64,12 +64,9 @@ def engine_bucle(conn, ip):
             elif msg=="STOP":
 
                 print("[ENGINE] Central ordena que paremos")
-                # if cp_state["suministro_activo"]:
-                #     cp_state["suministro_activo"]=
                 cp_state["status"]="PARADO"
                 cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por central")
-                #kafka
+                print("[ENGINE] CP Parado por socket")
                 send_msg(conn, "OK")
 
 
@@ -79,8 +76,7 @@ def engine_bucle(conn, ip):
                 print("[ENGINE] Central ordena que reanudemos")
                 cp_state["status"]="ACTIVADO"
                 cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por central")
-                #kafka
+                print("[ENGINE] CP Parado por socket")
                 send_msg(conn, "OK")
 
             #msg==registrar
@@ -103,73 +99,179 @@ def start_socket_monitor(ip, port):
     CONEX_ACTIVAS = threading.active_count()-1
     print(CONEX_ACTIVAS)
     while True:
-
-        try:
-
-            print(f"\n[ENGINE] Conectando al Monitor {ip}:{port}...")
-            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client.connect((ip, port))
-            print("[ENGINE] Conectado al Monitor, a la espera de mensajes\n")
-
-            connected = True
-            while connected:
-
-                msg = receive_msg(client)
-
-                if not msg:
-                    print("[ENGINE] Monitor desconectado, no hay conexión")
-                    return
-
-                if msg == FIN:
-                    connected = False
-                    print("[ENGINE] Monitor desconectado con FIN")
-
-                elif msg=="HEALTHSTATUS":
-                    send_msg(conn, cp_state["health_status"])
-
-                elif msg=="STOP":
-
-                    print("[ENGINE] Central ordena que paremos")
-                    # if cp_state["suministro_activo"]:
-                    #     cp_state["suministro_activo"]=
-                    cp_state["status"]="PARADO"
-                    cp_state["health_status"] = "OK"
-                    print("[ENGINE] CP Parado por central")
-                    #kafka
-                    send_msg(conn, "OK")
+        conn, addr = server.accept()
+        CONEX_ACTIVAS = threading.active_count()
+        if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
+            thread = threading.Thread(target=handle_client, args=(conn, addr))
+            thread.start()
+            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
+            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+        else:
+            print("DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
+            conn.send("DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
+            conn.close()
+            CONEX_ACTUALES = threading.active_count()-1
 
 
+def iniciar_kafka_producer(broker):
+    global kafka_producer
 
-                elif msg=="CONTINUE":
+    try:
 
-                    print("[ENGINE] Central ordena que reanudemos")
-                    cp_state["status"]="ACTIVADO"
-                    cp_state["health_status"] = "OK"
-                    print("[ENGINE] CP Parado por central")
-                    #kafka
-                    send_msg(conn, "OK")
+        kafka_producer = KafkaProducer(
+            bootstrap_servers=[broker],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8') #Formato JSON
+        )
 
-                    #msg==registrar
+        print(f"[ENGINE] Productor Kafka conectado a {broker}")
 
-                else:
-                    print("[ENGINE] Mensaje no reconocido")
-                    send_msg(conn, "ERROR: Mensaje no reconocido")
+    except Exception as e:
 
+        print(f"[ENGINE] Error conectando productor Kafka: {e}")
 
+def send_to_kafka(asunto, message):
 
-        except ConnectionRefusedError:
-            print(f"[ENGINE] No se puede conectar con el Monitor ({ip}:{port})")
+    global kafka_producer
+
+    try:
+        if kafka_producer:
+
+            kafka_producer.send(asunto, value=message)
+
+            kafka_producer.flush() #El flush manda lo que tiene por si acaso
+            print(f"[ENGINE] Mensaje enviado a {asunto}: {message}")
+        else:
+            print(f"[ENGINE] Productor Kafka no inicializado")
+
+    except Exception as e:
+        print(f"[ENGINE] Error mandando mensaje Kafka: {e}")
+
+def handle_kafka_message(message):
+    global cp_state
+
+    try:
+
+        data=message.value
+        message_type=data.get("type")
+        cp_id=data.get("cp_id")
+
+        if cp_id != cp_state["cp_id"]:
             return
-        except Exception as e:
-            print(f"[ENGINE] Error: {e}")
-            return
+        
+        if message_type == "STOP":
 
+            print(f"\n[ENGINE] STOP recibido desde CENTRAL mediante Kafka")
+
+            if cp_state["suministro_activo"]:
+                print("[ENGINE] Deteniendo suministro activo...")
+                cp_state["suministro_activo"] = False
+                stop_suministro.set()
+
+                cp_state["status"] = "PARADO"
+                print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
+                print("[ENGINE] CP fuera de servicio (OoO)\n")
+
+                #Notificar a Central
+                send_to_kafka('cp-status', {
+                "cp_id": cp_state["cp_id"],
+                "status": "PARADO",
+                "timestamp": time.time(),
+                "reason": "orden_central"
+                })
+
+        elif message_type=="CONTINUE":
+
+            print(f"\n[ENGINE] REANUDAR recibido desde CENTRAL mediante Kafka")
+            cp_state["status"] = "ACTIVADO"
+            print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
+            print("[ENGINE] CP activado y disponible\n")
+
+            #Notificar a Central
+            send_to_kafka('cp-status', {
+                "cp_id": cp_state["cp_id"],
+                "status": "ACTIVADO",
+                "timestamp": time.time(),
+                "reason": "orden_central"
+                })
+
+
+        else:
+            print("[ENGINE] Mensaje recibido pero no reconocido")
+
+    except Exception as e:
+        print(f"[ENGINE] Error procesando mensaje Kafka: {e}")    
+
+
+
+
+def kafka_consumer_thread(kafka_broker, cp_id):
+
+    global kafka_consumer
+    print(f"[ENGINE] Iniciando consumidor Kafka")
+
+    try:
+        kafka_consumer= KafkaConsumer(
+            'cp-ordenes', #Esto es el asunto del mensaje
+            bootstrap_servers=kafka_broker,
+            group_id=f'engine-{cp_id}', #Pone a los cp en un grupo de consumidores
+            value_deserializer=lambda m: json.loads(m.decode('utf-8')), #El mensaje se recibe en formato JSON
+            auto_offset_reset='latest', #Si se resetea solo empieza a leer los mensajes nuevos
+            enable_auto_commit=True, #Por si el cp se reinicia para saber por donde continuar
+            consumer_timeout_ms=TIMEAUT
+            )
+
+        print(f"[ENGINE] Consumidor Kafka conectado\n")
+
+        while True:
+
+            kafka_data=kafka_consumer.poll(TIMEAUT)
+
+            if not kafka_data:
+                continue
+            else:
+                for tp, messages in kafka_data.items():
+                    for message in messages:
+                        handle_kafka_message(message)
+
+    except Exception as e:
+        print(f"[ENGINE] Error en Consumidor Kafka: {e}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("ERROR Argumentos: EV_CP_E.py <IP> <PORT>")
+    if len(sys.argv) != 5:
+        print("Uso: python EV_CP_E.py <IP> <PORT> <KAFKA_BROKER> <CP_ID>")
         sys.exit(1)
 
     ip = sys.argv[1]
     port = int(sys.argv[2])
+    kafka_broker = sys.argv[3]
+    cp_id = sys.argv[4]
+
+
+    cp_state["cp_id"] = cp_id
+    cp_state["status"] = "ACTIVADO"
+
+    print(f"[ENGINE] - Punto de Recarga {cp_id}\n")
+    print("----------------------------------------\n")
+    print(f"Socket Monitor: {ip}:{port}\n")
+    print(f"Kafka Broker: {kafka_broker}\n")
+
+    iniciar_kafka_producer(kafka_broker)
+
+    kafka_thread = threading.Thread(
+        target=kafka_consumer_thread, 
+        args=(kafka_broker, cp_id),
+        daemon=True #El daemon hace que cuando acabe el hilo se borre
+    )
+    kafka_thread.start()
+
+    print(f"[ENGINE] Registrando CP en la central...\n")
+    send_to_kafka('cp-register', {
+        "cp_id": cp_id,
+        "status": "ACTIVADO",
+        "timestamp": time.time(),
+        "ubicacion": "X",
+        "precio_kwh": 0.30
+    })
+
     start_socket_monitor(ip, port)
+
