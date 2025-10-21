@@ -5,6 +5,12 @@ import mysql.connector
 import os
 import time
 import sys
+import json
+from kafka import KafkaProducer
+#Tipo mensajes kafka: cp-estado
+#                     cp-ordenes
+
+
 HEADER = 64
 PORT = 5000
 SERVER = socket.gethostbyname(socket.gethostname())
@@ -12,9 +18,11 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 2
+RETRIES=3 #Reintentos para kafka
 
 central_cps = {}
 lock = Lock()
+kafka_producer = None
 
 def search_CP():
 
@@ -139,15 +147,96 @@ def start_socket():
             CONEX_ACTUALES = threading.active_count()-1
         
 
+def inicia_kafka_producer(kafka_broker):
+
+    global kafka_producer
+
+    print(f"[CENTRAL] Conectando a Kafka broker: {kafka_broker}")
+
+    try:
+
+        kafka_producer = KafkaProducer(
+            bootstrap_servers=kafka_broker,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'), #Formato JSON
+            acks='all', #Espera confirmacion antes de considerar el mensaje como enviado
+            retries=RETRIES #Reintentos si falla
+        )
+
+        print(f"[CENTRAL] Productor Kafka conectado a {kafka_broker}")
+        return True
+
+    except Exception as e:
+
+        print(f"[ENGINE] Error conectando productor Kafka: {e}")
+        return False
+
+def send_order_cp(cp_id, order_type):
+
+    if not kafka_producer:
+
+        print("[CENTRAL] Productor Kafka no iniciado")
+        return False
+    
+    try:
+        message = {
+            "type": order_type,
+            "cp_id": cp_id,
+            "timestamp": time.time()
+        }
+        
+        kafka_producer.send('cp-ordenes', value=message)
+        
+        print(f"[CENTRAL] Orden del tipo {order_type} enviada a CP {cp_id} por Kafka")
+        
+        with lock: #Actualizamos en local también
+            if cp_id in central_cps:
+                if order_type == "STOP":
+                    central_cps[cp_id]["ESTADO"] = "PARADO"
+                elif order_type == "CONTINUE":
+                    central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+        
+        return True
+        
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando orden a Kafka: {e}")
+        return False
+
+def send_order_all_cps(order_type):
+
+    with lock:
+        cp_ids = list(central_cps.keys())
+    
+    if not cp_ids:
+        print("[CENTRAL] Warning: No hay CPs registrados")
+        return
+    
+    print(f"\n[CENTRAL] Mandando orden {order_type} a todos los CPs: ({len(cp_ids)} CPs)")
+    
+    exitos = 0
+    for cp_id in cp_ids:
+        if send_order_cp(cp_id, order_type):
+            exitos += 1
+
+    print(f"[CENTRAL] Orden mandada con éxito a {exitos}/{len(cp_ids)} CPs\n")
+
 ######################### MAIN ##########################
-'''
-if len(sys.argv) == 4:
-    port = int(sys.argv[1])
-    ip_broker = sys.argv[2]
-    puerto_broker = int(sys.argv[3])
-else:
-    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [IP Broker] [Puerto Broker]")
-'''
+
+if len(sys.argv) != 4:
+    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [Kafka IP] [Kafka Puerto] [Kafka Broker]")
+    sys.exit(1)
+
+PORT = int(sys.argv[1])
+kafka_ip = sys.argv[2]
+kafka_port = int(sys.argv[3])
+kafka_broker = f"{kafka_ip}:{kafka_port}"
+
+
+print("[CENTRAL] - Sistema de Control EV Charging")
+print("------------------------------------------------------")
+print(f"Puerto de escucha: {PORT}")
+print(f"Kafka Broker: {kafka_broker}")
+
+
 #Creamos el servidor
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 #Bindeamos el localHost y el puerto
@@ -156,6 +245,9 @@ server.bind(ADDR)
 print("[STARTING] Servidor inicializándose...")
 search_CP()
 print("ACABO")
+
+if not inicia_kafka_producer(kafka_broker):
+    print("[CENTRAL] Error: Kafka no disponible")
 
 t1 = threading.Thread(target=start_socket, daemon=True)
 t1.start()
