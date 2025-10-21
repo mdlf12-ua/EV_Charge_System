@@ -46,6 +46,62 @@ def engine_bucle(conn, ip):
 
     global cp_state
 
+    connected = True
+    while connected:
+        msg_length = conn.recv(HEADER).decode(FORMAT)
+
+        if msg_length:
+            msg_length = int(msg_length)
+            msg = conn.recv(msg_length).decode(FORMAT)
+
+            if msg == FIN:
+                connected = False
+                print("[ENGINE] Monitor desconectado")
+
+            elif msg=="HEALTHSTATUS":
+                send_msg(conn, cp_state["health_status"])
+
+            elif msg=="STOP":
+
+                print("[ENGINE] Central ordena que paremos")
+                # if cp_state["suministro_activo"]:
+                #     cp_state["suministro_activo"]=
+                cp_state["status"]="PARADO"
+                cp_state["health_status"] = "OK"
+                print("[ENGINE] CP Parado por central")
+                #kafka
+                send_msg(conn, "OK")
+
+
+
+            elif msg=="CONTINUE":
+
+                print("[ENGINE] Central ordena que reanudemos")
+                cp_state["status"]="ACTIVADO"
+                cp_state["health_status"] = "OK"
+                print("[ENGINE] CP Parado por central")
+                #kafka
+                send_msg(conn, "OK")
+
+            #msg==registrar
+
+            else:
+                print("[ENGINE] Mensaje no reconocido")
+                send_msg(conn, "ERROR: Mensaje no reconocido")
+
+    print("CERRANDO CONEXIÓN CON EL CLIENTE")
+    conn.close()
+
+
+
+def start_socket_monitor(ip, port):
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((ip, port))
+    server.listen()
+    print(f"[ENGINE] Servidor a la escucha en {ip}")
+
+    CONEX_ACTIVAS = threading.active_count()-1
+    print(CONEX_ACTIVAS)
     while True:
 
         try:
@@ -116,4 +172,4 @@ if __name__ == "__main__":
 
     ip = sys.argv[1]
     port = int(sys.argv[2])
-    engine_bucle(ip, port)
+    start_socket_monitor(ip, port)
