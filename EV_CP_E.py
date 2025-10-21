@@ -89,7 +89,7 @@ def handle_client(conn, ip):
 
 
 
-def start_server(ip, port):
+def start_socket_monitor(ip, port):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((ip, port))
     server.listen()
@@ -122,4 +122,4 @@ if __name__ == "__main__":
 
     ip = sys.argv[1]
     port = int(sys.argv[2])
-    start_server(ip, port)
+    start_socket_monitor(ip, port)
