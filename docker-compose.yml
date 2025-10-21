@@ -1,9 +1,6 @@
-version: '3.8'
 services:
   mysql:
-    image: mysql:8
-    container_name: mi-mysql
-    restart: always
+    image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: 123456
       MYSQL_DATABASE: database
@@ -12,18 +9,26 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL","mysqladmin ping -h localhost -u$MYSQL_USER -p$MYSQL_PASSWORD || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   ev_central:
-    build: ./central
-    container_name: ev-central
+    build:
+      context: ./central
+      dockerfile: Dockerfile
     depends_on:
-      - mysql
-    ports:
-      - "5000:5000"  # o el puerto que use tu socket
+      mysql:
+        condition: service_healthy
     environment:
-      DB_HOST: mysql          # ← nombre del servicio MySQL (Docker DNS lo resuelve)
+      DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: usuario
       DB_PASSWORD: contraseña
       DB_NAME: database
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
