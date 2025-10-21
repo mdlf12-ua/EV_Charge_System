@@ -63,7 +63,7 @@ def noti_recuperacion(central_socket, motivo):
 
 
 
-def conectar_central(central_ip, central_port):
+def conectar_central(central_ip, central_port,cp_id):
     global monitor_state
     central_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     print(f"[MONITOR] Conectando a la Central ({central_ip}:{central_port})...")
@@ -73,7 +73,7 @@ def conectar_central(central_ip, central_port):
 
         # construir mensaje inicial con monitor_state
         estado_str = "OK" if not monitor_state["averiado"] else "KO"
-        msg_inicial = f"{monitor_state['cp_id']} {monitor_state['ubicacion']} {estado_str} 0.30"
+        msg_inicial = f"{cp_id} {monitor_state['ubicacion']} {estado_str} 0.30"
         send_msg(central_socket, msg_inicial)
 
         print(f"[MONITOR] Información inicial enviada: {msg_inicial}")
@@ -157,6 +157,6 @@ if __name__ == "__main__":
 
 
 
-    engine_socket = conectar_engine(engine_ip, engine_port)
+    #engine_socket = conectar_engine(engine_ip, engine_port)
     central_socket = conectar_central(central_ip, central_port, cp_id)
-    healthstatus_periodico(engine_socket, central_socket)
+    #healthstatus_periodico(engine_socket, central_socket)
