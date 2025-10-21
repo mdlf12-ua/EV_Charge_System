@@ -12,9 +12,10 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      
   ev_central:
-    build: .
+    build: ./central
     container_name: ev-central
     depends_on:
       - mysql
