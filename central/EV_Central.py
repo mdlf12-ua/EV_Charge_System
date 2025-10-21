@@ -11,7 +11,7 @@ SERVER = "0.0.0.0"
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
-MAX_CONEXIONES = 2
+MAX_CONEXIONES = 10
 
 central_cps = {}
 lock = Lock()
@@ -80,7 +80,7 @@ def handle_CP(conn, addr):
             partes = msg.split()
 
             # Asignamos cada campo según el orden definido
-            cp_id = int(partes[0])
+            cp_id = partes[0]
             ubicacion = partes[1]
             estado = partes[2]
             precio = float(partes[3])
@@ -105,7 +105,6 @@ def handle_CP(conn, addr):
             print(f"Estado: {estado}")
             print(f"Precio: {precio:.2f} €/kWh")
 
-            print(" He recibido del cliente [{addr}] el mensaje: {msg}")
 
     conn.close()
     
