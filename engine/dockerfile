@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY EV_CP_M.py .
+
+# Por ahora dejamos los argumentos fijos
+CMD ["python","-u","EV_CP_M.py","192.168.1.10","5000","192.168.1.10","5000","CP001"]
