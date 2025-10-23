@@ -38,3 +38,11 @@ services:
       context: ./monitor
       dockerfile: Dockerfile
     restart: unless-stopped
+
+  engine:
+    build:
+      context: ./engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "6000:6000"
