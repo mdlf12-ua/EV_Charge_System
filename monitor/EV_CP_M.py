@@ -159,4 +159,4 @@ if __name__ == "__main__":
 
     engine_socket = conectar_engine(engine_ip, engine_port)
     central_socket = conectar_central(central_ip, central_port, cp_id)
-    healthstatus_periodico(engine_socket, central_socket)
+    #healthstatus_periodico(engine_socket, central_socket)
