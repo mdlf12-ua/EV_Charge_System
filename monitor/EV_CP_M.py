@@ -78,11 +78,6 @@ def conectar_central(central_ip, central_port,cp_id):
 
         print(f"[MONITOR] Información inicial enviada: {msg_inicial}")
 
-        # esperar respuesta opcional
-        resp = receive_msg(central_socket)
-        if resp:
-            print(f"[CENTRAL] Respuesta: {resp}")
-
         return central_socket
 
     except Exception as e:
@@ -91,11 +86,12 @@ def conectar_central(central_ip, central_port,cp_id):
 
 
 
-def conectar_engine(engine_ip, engine_port):
+def conectar_engine(engine_ip, engine_port,cp_id):
     print(f"[MONITOR] Conectando al Engine ({engine_ip}:{engine_port})...")
     engine_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     engine_socket.connect((engine_ip, engine_port))
-
+    send_msg(engine_socket, cp_id)
+    print(f"[MONITOR] ID {cp_id} enviada al Engine.")
     return engine_socket
 
 def healthstatus_periodico(engine_socket, central_socket):
@@ -157,6 +153,6 @@ if __name__ == "__main__":
 
 
 
-    engine_socket = conectar_engine(engine_ip, engine_port)
+    #engine_socket = conectar_engine(engine_ip, engine_port,cp_id)
     central_socket = conectar_central(central_ip, central_port, cp_id)
     #healthstatus_periodico(engine_socket, central_socket)
