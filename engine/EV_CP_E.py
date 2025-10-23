@@ -7,6 +7,9 @@ FORMAT = 'utf-8'
 HEADER = 64
 MAX_CONEXIONES = 20
 FIN = "FIN"
+SERVER = "0.0.0.0"
+PORT = 6000
+ADDR = (SERVER, PORT)
 
 kafka_producer = None
 kafka_consumer = None
@@ -35,65 +38,91 @@ def send_msg(conn, msg):
     conn.send(send_length)
     conn.send(message)
 
+def receive_msg(conn):
+    """Recibe un mensaje con encabezado de longitud fija (HEADER)."""
+    try:
+        # Recibimos la longitud del mensaje
+        msg_length = conn.recv(HEADER).decode(FORMAT).strip()
+        if not msg_length:
+            return None
+
+        msg_length = int(msg_length)
+        # Ahora recibimos el mensaje real
+        msg = conn.recv(msg_length).decode(FORMAT)
+        return msg
+    except Exception as e:
+        print(f"[ENGINE] Error al recibir mensaje: {e}")
+        return None
+
 
 def handle_client(conn, ip):
-
     global cp_state
     print(f"[NUEVA CONEXION] {ip} connected.")
 
+    registered = False
     connected = True
+
     while connected:
-        msg_length = conn.recv(HEADER).decode(FORMAT)
+        msg = receive_msg(conn)
+        if msg is None:  # desconexión limpia o error de lectura
+            break
 
-        if msg_length:
-            msg_length = int(msg_length)
-            msg = conn.recv(msg_length).decode(FORMAT)
+        # --- 1) Registro inicial: espera "CP_ID:<id>" ---
+        if not registered:
+            if msg.startswith("CP_ID:"):
+                cp_id = msg.split(":", 1)[1].strip()
+                cp_state["cp_id"] = cp_id
+                print(f"[ENGINE] CP registrado: {cp_id}")
+                send_msg(conn, "OK")          # ACK al monitor
+                registered = True
 
-            if msg == FIN:
-                connected = False
-                print("[ENGINE] Monitor desconectado")
-
-            elif msg=="HEALTHSTATUS":
-                send_msg(conn, cp_state["health_status"])
-
-            elif msg=="STOP":
-
-                print("[ENGINE] Central ordena que paremos")
-                # if cp_state["suministro_activo"]:
-                #     cp_state["suministro_activo"]=
-                cp_state["status"]="PARADO"
-                cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por central")
-                #kafka
-                send_msg(conn, "OK")
-
-
-
-            elif msg=="CONTINUE":
-
-                print("[ENGINE] Central ordena que reanudemos")
-                cp_state["status"]="ACTIVADO"
-                cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por central")
-                #kafka
-                send_msg(conn, "OK")
-
-            #msg==registrar
-
+                # (opcional) devolver snapshot inicial de estado
+                # ej: send_msg(conn, f"STATE:{cp_state['status']}:{cp_state['health_status']}")
+                continue
             else:
-                print("[ENGINE] Mensaje no reconocido")
-                send_msg(conn, "ERROR: Mensaje no reconocido")
+                # si llega otra cosa antes del CP_ID, la rechazamos
+                print(f"[ENGINE] Esperaba CP_ID:<id>, recibido: {msg!r}")
+                send_msg(conn, "ERROR: Primero envía CP_ID:<id>")
+                # puedes decidir: o seguir esperando, o cortar:
+                # connected = False
+                continue
+
+        # --- 2) Protocolo normal tras estar registrado ---
+        if msg == FIN:
+            connected = False
+            print("[ENGINE] Monitor desconectado")
+
+        elif msg == "HEALTHSTATUS":
+            send_msg(conn, cp_state["health_status"])
+
+        elif msg == "STOP":
+            print("[ENGINE] Central ordena que paremos")
+            cp_state["status"] = "PARADO"
+            cp_state["health_status"] = "OK"
+            print("[ENGINE] CP Parado por central")
+            send_msg(conn, "OK")
+
+        elif msg == "CONTINUE":
+            print("[ENGINE] Central ordena que reanudemos")
+            cp_state["status"] = "ACTIVADO"
+            cp_state["health_status"] = "OK"
+            print("[ENGINE] CP reanudado por central")
+            send_msg(conn, "OK")
+
+        else:
+            print(f"[ENGINE] Mensaje no reconocido: {msg!r}")
+            send_msg(conn, "ERROR: Mensaje no reconocido")
 
     print("CERRANDO CONEXIÓN CON EL CLIENTE")
     conn.close()
 
 
 
-def start_socket_monitor(ip, port):
+def start_socket_monitor():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((ip, port))
+    server.bind(ADDR)
     server.listen()
-    print(f"[ENGINE] Servidor a la escucha en {ip}")
+    print(f"[ENGINE] Servidor a la escucha en {SERVER}")
 
     CONEX_ACTIVAS = threading.active_count()-1
     print(CONEX_ACTIVAS)
@@ -122,4 +151,4 @@ if __name__ == "__main__":
 
     ip = sys.argv[1]
     port = int(sys.argv[2])
-    start_socket_monitor(ip, port)
+    start_socket_monitor()
