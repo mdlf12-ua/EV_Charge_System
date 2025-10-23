@@ -18,6 +18,8 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 10
+RETRIES=3 #Reintentos para Kafka
+
 
 central_cps = {}
 lock = Lock()
