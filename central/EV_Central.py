@@ -7,6 +7,7 @@ import time
 import sys
 import json
 from kafka import KafkaProducer
+from kafka import KafkaConsumer
 #Tipo mensajes kafka: cp-estado
 #                     cp-ordenes
 
@@ -24,6 +25,7 @@ RETRIES=3 #Reintentos para Kafka
 central_cps = {}
 lock = Lock()
 kafka_producer = None
+kafka_consumer=None
 
 def search_CP():
 

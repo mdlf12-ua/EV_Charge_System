@@ -13,7 +13,7 @@ FORMAT = 'utf-8'
 HEADER = 64
 MAX_CONEXIONES = 20
 FIN = "FIN"
-TIMEAUT=5000 #in miliseconds
+TIMEOUT=5000 #in miliseconds
 
 kafka_producer = None
 kafka_consumer = None
@@ -219,14 +219,14 @@ def kafka_consumer_thread(kafka_broker, cp_id):
             value_deserializer=lambda m: json.loads(m.decode('utf-8')), #El mensaje se recibe en formato JSON
             auto_offset_reset='latest', #Si se resetea solo empieza a leer los mensajes nuevos
             enable_auto_commit=True, #Por si el cp se reinicia para saber por donde continuar
-            consumer_timeout_ms=TIMEAUT
+            consumer_timeout_ms=TIMEOUT
             )
 
         print(f"[ENGINE] Consumidor Kafka conectado\n")
 
         while True:
 
-            kafka_data=kafka_consumer.poll(TIMEAUT)
+            kafka_data=kafka_consumer.poll(TIMEOUT)
 
             if not kafka_data:
                 continue
