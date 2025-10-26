@@ -8,7 +8,7 @@ import sys
 import json
 from kafka import KafkaProducer 
 from kafka import KafkaConsumer
-#Asuntos (topics) mensajes: solicitudes-recarga
+#Asuntos (topics) mensajes: solicitud-recarga
 #               notificaciones-{driver_id}
 #               cp-estado
 #               datos-consumo-{driver_id}
@@ -48,7 +48,7 @@ def iniciar_kafka_producer(kafka_broker):
         print(f"[DRIVER] Error conectando productor Kafka: {e}")
         return False
 
-def iniciar_kafka_consumer(kafka_broker):
+def iniciar_kafka_consumer(kafka_broker, driver_id):
      
     global kafka_consumer
     
@@ -59,7 +59,7 @@ def iniciar_kafka_consumer(kafka_broker):
             f'notificaciones-{driver_id}', #Topics que consume
             f'datos-consumo-{driver_id}',
             'cp-estado',
-            bootstrap_servers=kafka_broker,
+            bootstrap_servers=[kafka_broker],
             group_id=f'driver-{driver_id}',
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             auto_offset_reset='latest',
@@ -91,7 +91,9 @@ def solicitar_suministro(cp_id):
             "timestamp": time.time()
         }
 
-        kafka_producer.send('solicitudes-recarga', value=message)
+        kafka_producer.send('solicitud-recarga', value=message)
+        kafka_producer.flush()
+        return True
 
     except Exception as e:
         print(f"[DRIVER] Error enviando solicitud de recarga: {e}")
@@ -193,7 +195,7 @@ def handle_kafka_message(message):
         if topic==f"notificaciones-{driver_id}":
             
             if msg_type=="autorizacion_concedida":
-                print(f"\nDRIVER] Suministro concedido en CP {data.get('cp_id')}")
+                print(f"\n[DRIVER] Suministro concedido en CP {data.get('cp_id')}")
                 #ahora se inicia el enchufado y desenchufado con menú
 
                 driver_state["current_cp"] = data.get("cp_id")
@@ -205,7 +207,7 @@ def handle_kafka_message(message):
                 print(f"\n[DRIVER] Suministro INICIADO en CP {data.get('cp_id')}")
                 driver_state["suministro_activo"] = True
 
-            elif msg_type == "supply_finished":
+            elif msg_type == "suministro_finalizado":
                 print(f"\n[DRIVER] Suministro FINALIZADO")
 
                 print(f"    ---------------------- TICKET ----------------------")

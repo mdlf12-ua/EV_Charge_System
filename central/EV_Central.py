@@ -8,9 +8,11 @@ import sys
 import json
 from kafka import KafkaProducer
 from kafka import KafkaConsumer
-#Tipo mensajes kafka: cp-estado
-#                     cp-ordenes
-
+# Topics Kafka:
+# CONSUMIDOR: solicitud-recarga (del Driver)
+# PRODUCTOR: notificaciones-{driver_id} (al Driver)
+# PRODUCTOR: datos-consumo (telemetría al Driver)
+# PRODUCTOR: cp-ordenes (al Engine)               
 
 HEADER = 64
 PORT = 5000
@@ -20,6 +22,7 @@ FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 10
 RETRIES=3 #Reintentos para Kafka
+TIMEOUT=5000 #milisegundos
 
 
 central_cps = {}
@@ -158,7 +161,7 @@ def inicia_kafka_producer(kafka_broker):
     try:
 
         kafka_producer = KafkaProducer(
-            bootstrap_servers=kafka_broker,
+            bootstrap_servers=[kafka_broker],
             value_serializer=lambda v: json.dumps(v).encode('utf-8'), #Formato JSON
             acks='all', #Espera confirmacion antes de considerar el mensaje como enviado
             retries=RETRIES #Reintentos si falla
@@ -171,6 +174,168 @@ def inicia_kafka_producer(kafka_broker):
 
         print(f"[ENGINE] Error conectando productor Kafka: {e}")
         return False
+
+
+def inicia_kafka_consumer(kafka_broker):
+
+    global kafka_consumer
+
+    print(f"[CENTRAL] Conectando consumidor a Kafka: {kafka_broker}")
+
+    try:
+        kafka_consumer = KafkaConsumer(
+            'solicitud-recarga',  # Topic donde los Drivers envían solicitudes
+            bootstrap_servers=[kafka_broker],
+            group_id='central-group',
+            value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
+            auto_offset_reset='latest',
+            enable_auto_commit=True,
+            consumer_timeout_ms=TIMEOUT
+        )
+        print(f"[CENTRAL] Consumidor Kafka conectado\n")
+        return True
+
+    except Exception as e:
+        print(f"[CENTRAL] Error conectando consumidor Kafka: {e}")
+        return False
+
+def validar_cp_driver(cp_id):
+
+    with lock:
+        if cp_id not in central_cps:
+            return False, "CP no existe"
+        
+        cp=central_cps[cp_id]
+        estado=cp.get("ESTADO") #????????'
+
+        if estado=="DESCONECTADO":
+            return False, "CP desconectado"
+        if estado=="PARADO":
+            return False, "CP parado"
+        if estado=="AVERIADO":
+            return False, "CP averiado"
+        if estado=="SUMINISTRANDO":
+            return False, "CP ocupado"
+        if estado=="ACTIVADO":
+            return True, "CP disponible y sin problemas"
+        
+        return False, f"Estado desconocido: {estado}"
+
+def notificar_driver(driver_id, msg_type, data):
+
+    if not kafka_producer:
+        print("[CENTRAL] Productor no inicializado")
+        return False
+    
+    try: 
+        message={
+            "type":msg_type,
+            "timestamp":time.time(),
+            **data                  
+        }
+
+        topic = f'notificaciones-{driver_id}'
+        kafka_producer.send(topic, value=message)
+        kafka_producer.flush()
+        return True
+
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando notificación: {e}")
+        return False
+    
+
+def solicitud_recarga(driver_id, cp_id):
+
+    print(f"\n[CENTRAL] Procesando olicitud de recarga:")
+    print(f"            Driver: {driver_id}")
+    print(f"            CP: {cp_id}")
+
+    disp, razon=validar_cp_driver(cp_id)
+
+    if disp:
+        print(f"[CENTRAL] CP {cp_id} está disponible, iniciando autorización")
+
+        with lock:
+            central_cps[cp_id]["ESTADO"] = "AUTORIZADO"
+            central_cps[cp_id]["CONDUCTOR_ID"]=driver_id
+
+            notificar_driver(driver_id, "autorizacion_concedida", {
+
+                "cp_id":cp_id,
+                "message": "Suministro autorizado. Puede enchufarse al CP"
+            })
+
+            #Enviar orden al engine
+
+    else:
+        print(f"[CENTRAL] CP {cp_id} NO disponible: {razon}")
+        
+        notificar_driver(driver_id, "autorizacion_denegada", {
+            "cp_id": cp_id,
+            "message": razon
+        })
+
+
+def kafka_consumer_thread():
+     
+     print("[CENTRAL] A la escucha de solicitudes de Drivers\n")
+
+     while True:
+        try:
+            for message in kafka_consumer:
+                data=message.value
+                msg_type=data.get("type")
+
+                if msg_type == "solicitud-recarga":
+                    driver_id=data.get("driver_id")
+                    cp_id=data.get("cp_id")
+                    solicitud_recarga(driver_id, cp_id)
+
+        except Exception as e:
+            print(f"[CENTRAL] Error en consumer thread: {e}")
+            time.sleep(1)
+
+def enviar_datos_consumo(driver_id, cp_id, consumo_kw, importe_euro):
+
+    if not kafka_producer:
+        print("[CENTRAL] Productor no inicializado")
+        return False
+    
+    try:
+        message={
+            "type": "telemetria",
+            "driver_id":driver_id,
+            "cp_id":cp_id,
+            "consumo_kw":consumo_kw,
+            "importe_euro":importe_euro,
+            "timestamp":time.time()
+        }
+
+        kafka_producer.send(f'datos-consumo-{driver_id}', value=message)
+        return True
+
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando datos de consumo: {e}")
+        return False
+            
+
+def mandar_ticket(driver_id, cp_id, consumo_total, importe_total, duracion):
+
+    print(f"\n[CENTRAL] Generando ticket final para {driver_id}")
+
+    notificar_driver(driver_id, "suministro_finalizado", {
+        "cp_id": cp_id,
+        "consumo_kw": consumo_total,
+        "importe_euro": importe_total,
+        "duracion": duracion
+    })
+
+    with lock:
+        if cp_id in central_cps:
+            central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+            central_cps[cp_id]["CONDUCTOR_ID"] = None
+            central_cps[cp_id]["CONSUMO_KW"] = 0.0
+            central_cps[cp_id]["IMPORTE_EU"] = 0.0
 
 def send_order_cp(cp_id, order_type):
 
@@ -202,6 +367,9 @@ def send_order_cp(cp_id, order_type):
     except Exception as e:
         print(f"[CENTRAL] Error enviando orden a Kafka: {e}")
         return False
+
+
+
 
 def send_order_all_cps(order_type):
 
@@ -251,8 +419,29 @@ print("ACABO")
 if not inicia_kafka_producer(kafka_broker):
     print("[CENTRAL] Error: Kafka no disponible")
 
+if not inicia_kafka_consumer(kafka_broker):
+    print("[CENTRAL] Error: Kafka no disponible")
+
 t1 = threading.Thread(target=start_socket, daemon=True)
 t1.start()
-t1.join()
+#t1.join()
+
+
+if kafka_consumer:
+    consumer_thread = threading.Thread(target=kafka_consumer_thread, daemon=True)
+    consumer_thread.start()
+
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\n[CENTRAL] Cerrando sistema")
+finally:
+    if kafka_producer:
+        kafka_producer.close()
+    if kafka_consumer:
+        kafka_consumer.close()
+    print("[CENTRAL] Sistema cerrado")
 
 print("ACABO")
