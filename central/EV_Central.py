@@ -216,6 +216,8 @@ def validar_cp_driver(cp_id):
             return False, "CP averiado"
         if estado=="SUMINISTRANDO":
             return False, "CP ocupado"
+        if estado=="AUTORIZADO":
+            return False, "CP reservado"
         if estado=="ACTIVADO":
             return True, "CP disponible y sin problemas"
         
