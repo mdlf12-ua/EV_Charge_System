@@ -90,7 +90,8 @@ def conectar_engine(engine_ip, engine_port,cp_id):
     print(f"[MONITOR] Conectando al Engine ({engine_ip}:{engine_port})...")
     engine_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     engine_socket.connect((engine_ip, engine_port))
-    send_msg(engine_socket, cp_id)
+
+    send_msg(engine_socket, f"CP_ID:{cp_id}")
     print(f"[MONITOR] ID {cp_id} enviada al Engine.")
     return engine_socket
 
@@ -102,7 +103,7 @@ def healthstatus_periodico(engine_socket, central_socket):
         try:
             send_msg(engine_socket, "HEALTHSTATUS")
             respuesta=receive_msg(engine_socket)
-
+            print("Health")
             if respuesta is None:
                 if not monitor_state["averiado"]:
                     print("\n[MONITOR] Avería detectada en Engine: Engine no responde")
@@ -153,6 +154,6 @@ if __name__ == "__main__":
 
 
 
-    #engine_socket = conectar_engine(engine_ip, engine_port,cp_id)
+    engine_socket = conectar_engine(engine_ip, engine_port,cp_id)
     central_socket = conectar_central(central_ip, central_port, cp_id)
-    #healthstatus_periodico(engine_socket, central_socket)
+    healthstatus_periodico(engine_socket, central_socket)
