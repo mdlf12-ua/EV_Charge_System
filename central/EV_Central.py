@@ -77,6 +77,32 @@ def handle_CP(conn, addr):
             #############################################
             #Aqui iniciaria el protocolo                #
             #############################################
+            if msg.startswith("CP_AVERIA:"):
+                try:
+                    _, cp_id, motivo = msg.split(":", 2)
+                except ValueError:
+                    print(f"[CENTRAL] Formato CP_AVERIA inválido: {msg}")
+                    continue
+
+                with lock:
+                    # asegurar que existe el CP en la tabla interna
+                    info = central_cps.get(cp_id, {
+                        "ID": cp_id,
+                        "Ubicacion": None,
+                        "PRECIO": None,
+                        "ESTADO": "Parado",
+                        "CONDUCTOR_ID": None,
+                        "CONSUMO_KW": None,
+                        "IMPORTE_EU": None
+                    })
+                    info["ESTADO"] = "Averiado"
+                    info["ULTIMA_AVERIA"] = motivo
+                    info["TS_ULTIMO_CAMBIO"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    central_cps[cp_id] = info
+
+                print(f"[CENTRAL] CP {cp_id} en AVERÍA. Motivo: {motivo}")
+                continue
+
             partes = msg.split()
 
             # Asignamos cada campo según el orden definido
