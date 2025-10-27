@@ -10,8 +10,9 @@ from kafka import KafkaProducer
 from kafka import KafkaConsumer
 # Topics Kafka:
 # CONSUMIDOR: solicitud-recarga (del Driver)
+# # CONSUMIDOR: solicitud-cps (del Driver)
 # PRODUCTOR: notificaciones-{driver_id} (al Driver)
-# PRODUCTOR: datos-consumo (telemetría al Driver)
+# PRODUCTOR: datos-consumo-{driver_id} (telemetría al Driver)
 # PRODUCTOR: cp-ordenes (al Engine)               
 
 HEADER = 64
@@ -184,7 +185,8 @@ def inicia_kafka_consumer(kafka_broker):
 
     try:
         kafka_consumer = KafkaConsumer(
-            'solicitud-recarga',  # Topic donde los Drivers envían solicitudes
+            'solicitud-recarga',
+            'solicitud-cps',  # Topic donde los Drivers envían solicitudes
             bootstrap_servers=[kafka_broker],
             group_id='central-group',
             value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
@@ -198,6 +200,35 @@ def inicia_kafka_consumer(kafka_broker):
     except Exception as e:
         print(f"[CENTRAL] Error conectando consumidor Kafka: {e}")
         return False
+
+def enviar_lista_cps(driver_id):
+
+    if not kafka_producer:
+        print("[CENTRAL] Productor no inicializado, no se puede enviar lista de CPs")
+        return False
+    
+    with lock:
+
+        cps_list=[]
+        for cp_id, cp in central_cps.items():
+            cps_list.append({
+                "ID": cp.get("ID"),
+                "Ubicacion": cp.get("Ubicacion"),
+                "PRECIO": cp.get("PRECIO"),
+                "ESTADO": cp.get("ESTADO"),
+                "CONDUCTOR_ID": cp.get("CONDUCTOR_ID"),
+                "CONSUMO_KW": cp.get("CONSUMO_KW"),
+                "IMPORTE_EU": cp.get("IMPORTE_EU")
+            })
+    try:
+        notificar_driver(driver_id, "lista-cps", {"cps":cps_list})
+        print(f"[CENTRAL] Enviada lista de {len(cps_list)} CPs a driver {driver_id}")
+        return True
+    
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando lista de CPs a driver {driver_id}: {e}")
+        return False
+
 
 def validar_cp_driver(cp_id):
 
@@ -292,6 +323,16 @@ def kafka_consumer_thread():
                     driver_id=data.get("driver_id")
                     cp_id=data.get("cp_id")
                     solicitud_recarga(driver_id, cp_id)
+
+
+                elif msg_type == "solicitud-cps":
+                    driver_id = data.get("driver_id")
+                    if driver_id:
+                        enviar_lista_cps(driver_id)
+                        print("[CENTRAL] Lista CPs enviada")
+                    else:
+                        print("[CENTRAL] solicitud-lista-cps sin driver_id valida")
+
 
         except Exception as e:
             print(f"[CENTRAL] Error en consumer thread: {e}")

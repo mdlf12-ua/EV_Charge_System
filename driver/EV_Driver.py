@@ -12,6 +12,7 @@ from kafka import KafkaConsumer
 #               notificaciones-{driver_id}
 #               cp-estado
 #               datos-consumo-{driver_id}
+#               solicitud-cps
 
 driver_id = None
 kafka_broker = None
@@ -130,8 +131,7 @@ def modo_interactivo():
 
             elif opcion=="2":
                 print("\n------------------------------------")
-                #Pedir a Central todos los CP y mostrarlos
-
+                solicitar_lista_cps()
             elif opcion=="3":
                 filepath=input("Introduzca la ruta del archivo: ").strip()
                 modo_automatico(filepath)
@@ -150,10 +150,31 @@ def modo_interactivo():
         except Exception as e:
             print(f"[DRIVER] Error: {e}")
 
+def solicitar_lista_cps():
+
+    if not kafka_producer:
+        print("[DRIVER] Error: Productor no inicializado")
+        return False
+    
+    try:
+        message={
+
+            "type":"solicitud-cps",
+            "driver_id": driver_id,
+            "timestamp": time.time()
+        }
+        kafka_producer.send('solicitud-cps', value=message)
+        kafka_producer.flush()
+        print("[DRIVER] Petición de lista de CPs enviada a Central")
+        return True
+
+    except Exception as e:
+        print(f"[DRIVER] Error enviando solicitud de lista de CPs: {e}")
+        return False
+
 def modo_automatico(filepath):
     print("\n------------------------------------")
     print(f"Leyendo archivo en {filepath}")
-
 
     try:
         lista_cps=[]
@@ -217,6 +238,15 @@ def handle_kafka_message(message):
                 print(f"    -----------------------------------------------------\n")
                 driver_state["suministro_activo"] = False
                 driver_state["current_cp"] = None
+
+            elif msg_type=="lista-cps":
+                cps=data.get("cps", [])
+                print(f"\n[DRIVER] Lista de CPs recibida ({len(cps)}):")
+                print("  ID | Ubicación | Precio | Estado | Conductor | Consumo_kW | Importe_EU")
+                print("  ---------------------------------------------------------------------")
+                for cp in cps:
+                    print(f"  {cp.get('ID')} | {cp.get('Ubicacion')} | {cp.get('PRECIO')} | {cp.get('ESTADO')} | {cp.get('CONDUCTOR_ID')} | {cp.get('CONSUMO_KW')} | {cp.get('IMPORTE_EU')}")
+                print("  ---------------------------------------------------------------------\n")
 
             else:
                 print(f"\n[DRIVER] Menaje no reconnocido, mensaje: {msg_type}")
