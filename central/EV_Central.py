@@ -5,6 +5,16 @@ import mysql.connector
 import os
 import time
 import sys
+import json
+from kafka import KafkaProducer
+from kafka import KafkaConsumer
+# Topics Kafka:
+# CONSUMIDOR: solicitud-recarga (del Driver)
+# # CONSUMIDOR: solicitud-cps (del Driver)
+# PRODUCTOR: notificaciones-{driver_id} (al Driver)
+# PRODUCTOR: datos-consumo-{driver_id} (telemetría al Driver)
+# PRODUCTOR: cp-ordenes (al Engine)               
+
 HEADER = 64
 PORT = 5000
 SERVER = "0.0.0.0"
@@ -12,9 +22,14 @@ ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 FIN = "FIN"
 MAX_CONEXIONES = 10
+RETRIES=3 #Reintentos para Kafka
+TIMEOUT=5000 #milisegundos
+
 
 central_cps = {}
 lock = Lock()
+kafka_producer = None
+kafka_consumer=None
 
 def search_CP():
 
@@ -164,15 +179,303 @@ def start_socket():
             CONEX_ACTUALES = threading.active_count()-1
         
 
+def inicia_kafka_producer(kafka_broker):
+
+    global kafka_producer
+
+    print(f"[CENTRAL] Conectando a Kafka broker: {kafka_broker}")
+
+    try:
+
+        kafka_producer = KafkaProducer(
+            bootstrap_servers=[kafka_broker],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'), #Formato JSON
+            acks='all', #Espera confirmacion antes de considerar el mensaje como enviado
+            retries=RETRIES #Reintentos si falla
+        )
+
+        print(f"[CENTRAL] Productor Kafka conectado a {kafka_broker}")
+        return True
+
+    except Exception as e:
+
+        print(f"[ENGINE] Error conectando productor Kafka: {e}")
+        return False
+
+
+def inicia_kafka_consumer(kafka_broker):
+
+    global kafka_consumer
+
+    print(f"[CENTRAL] Conectando consumidor a Kafka: {kafka_broker}")
+
+    try:
+        kafka_consumer = KafkaConsumer(
+            'solicitud-recarga',
+            'solicitud-cps',  # Topic donde los Drivers envían solicitudes
+            bootstrap_servers=[kafka_broker],
+            group_id='central-group',
+            value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
+            auto_offset_reset='latest',
+            enable_auto_commit=True,
+            consumer_timeout_ms=TIMEOUT
+        )
+        print(f"[CENTRAL] Consumidor Kafka conectado\n")
+        return True
+
+    except Exception as e:
+        print(f"[CENTRAL] Error conectando consumidor Kafka: {e}")
+        return False
+
+def enviar_lista_cps(driver_id):
+
+    if not kafka_producer:
+        print("[CENTRAL] Productor no inicializado, no se puede enviar lista de CPs")
+        return False
+    
+    with lock:
+
+        cps_list=[]
+        for cp_id, cp in central_cps.items():
+            cps_list.append({
+                "ID": cp.get("ID"),
+                "Ubicacion": cp.get("Ubicacion"),
+                "PRECIO": cp.get("PRECIO"),
+                "ESTADO": cp.get("ESTADO"),
+                "CONDUCTOR_ID": cp.get("CONDUCTOR_ID"),
+                "CONSUMO_KW": cp.get("CONSUMO_KW"),
+                "IMPORTE_EU": cp.get("IMPORTE_EU")
+            })
+    try:
+        notificar_driver(driver_id, "lista-cps", {"cps":cps_list})
+        print(f"[CENTRAL] Enviada lista de {len(cps_list)} CPs a driver {driver_id}")
+        return True
+    
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando lista de CPs a driver {driver_id}: {e}")
+        return False
+
+
+def validar_cp_driver(cp_id):
+
+    with lock:
+        if cp_id not in central_cps:
+            return False, "CP no existe"
+        
+        cp=central_cps[cp_id]
+        estado=cp.get("ESTADO") #????????'
+
+        if estado=="DESCONECTADO":
+            return False, "CP desconectado"
+        if estado=="PARADO":
+            return False, "CP parado"
+        if estado=="AVERIADO":
+            return False, "CP averiado"
+        if estado=="SUMINISTRANDO":
+            return False, "CP ocupado"
+        if estado=="AUTORIZADO":
+            return False, "CP reservado"
+        if estado=="ACTIVADO":
+            return True, "CP disponible y sin problemas"
+        
+        return False, f"Estado desconocido: {estado}"
+
+def notificar_driver(driver_id, msg_type, data):
+
+    if not kafka_producer:
+        print("[CENTRAL] Productor no inicializado")
+        return False
+    
+    try: 
+        message={
+            "type":msg_type,
+            "timestamp":time.time(),
+            **data                  
+        }
+
+        topic = f'notificaciones-{driver_id}'
+        kafka_producer.send(topic, value=message)
+        kafka_producer.flush()
+        return True
+
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando notificación: {e}")
+        return False
+    
+
+def solicitud_recarga(driver_id, cp_id):
+
+    print(f"\n[CENTRAL] Procesando olicitud de recarga:")
+    print(f"            Driver: {driver_id}")
+    print(f"            CP: {cp_id}")
+
+    disp, razon=validar_cp_driver(cp_id)
+
+    if disp:
+        print(f"[CENTRAL] CP {cp_id} está disponible, iniciando autorización")
+
+        with lock:
+            central_cps[cp_id]["ESTADO"] = "AUTORIZADO"
+            central_cps[cp_id]["CONDUCTOR_ID"]=driver_id
+
+            notificar_driver(driver_id, "autorizacion_concedida", {
+
+                "cp_id":cp_id,
+                "message": "Suministro autorizado. Puede enchufarse al CP"
+            })
+
+            #Enviar orden al engine
+
+    else:
+        print(f"[CENTRAL] CP {cp_id} NO disponible: {razon}")
+        
+        notificar_driver(driver_id, "autorizacion_denegada", {
+            "cp_id": cp_id,
+            "message": razon
+        })
+
+
+def kafka_consumer_thread():
+     
+     print("[CENTRAL] A la escucha de solicitudes de Drivers\n")
+
+     while True:
+        try:
+            for message in kafka_consumer:
+                data=message.value
+                msg_type=data.get("type")
+
+                if msg_type == "solicitud-recarga":
+                    driver_id=data.get("driver_id")
+                    cp_id=data.get("cp_id")
+                    solicitud_recarga(driver_id, cp_id)
+
+
+                elif msg_type == "solicitud-cps":
+                    driver_id = data.get("driver_id")
+                    if driver_id:
+                        enviar_lista_cps(driver_id)
+                        print("[CENTRAL] Lista CPs enviada")
+                    else:
+                        print("[CENTRAL] solicitud-lista-cps sin driver_id valida")
+
+
+        except Exception as e:
+            print(f"[CENTRAL] Error en consumer thread: {e}")
+            time.sleep(1)
+
+def enviar_datos_consumo(driver_id, cp_id, consumo_kw, importe_euro):
+
+    if not kafka_producer:
+        print("[CENTRAL] Productor no inicializado")
+        return False
+    
+    try:
+        message={
+            "type": "telemetria",
+            "driver_id":driver_id,
+            "cp_id":cp_id,
+            "consumo_kw":consumo_kw,
+            "importe_euro":importe_euro,
+            "timestamp":time.time()
+        }
+
+        kafka_producer.send(f'datos-consumo-{driver_id}', value=message)
+        return True
+
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando datos de consumo: {e}")
+        return False
+            
+
+def mandar_ticket(driver_id, cp_id, consumo_total, importe_total, duracion):
+
+    print(f"\n[CENTRAL] Generando ticket final para {driver_id}")
+
+    notificar_driver(driver_id, "suministro_finalizado", {
+        "cp_id": cp_id,
+        "consumo_kw": consumo_total,
+        "importe_euro": importe_total,
+        "duracion": duracion
+    })
+
+    with lock:
+        if cp_id in central_cps:
+            central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+            central_cps[cp_id]["CONDUCTOR_ID"] = None
+            central_cps[cp_id]["CONSUMO_KW"] = 0.0
+            central_cps[cp_id]["IMPORTE_EU"] = 0.0
+
+def send_order_cp(cp_id, order_type):
+
+    if not kafka_producer:
+
+        print("[CENTRAL] Productor Kafka no iniciado")
+        return False
+    
+    try:
+        message = {
+            "type": order_type,
+            "cp_id": cp_id,
+            "timestamp": time.time()
+        }
+        
+        kafka_producer.send('cp-ordenes', value=message)
+        
+        print(f"[CENTRAL] Orden del tipo {order_type} enviada a CP {cp_id} por Kafka")
+        
+        with lock: #Actualizamos en local también
+            if cp_id in central_cps:
+                if order_type == "STOP":
+                    central_cps[cp_id]["ESTADO"] = "PARADO"
+                elif order_type == "CONTINUE":
+                    central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+        
+        return True
+        
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando orden a Kafka: {e}")
+        return False
+
+
+
+
+def send_order_all_cps(order_type):
+
+    with lock:
+        cp_ids = list(central_cps.keys())
+    
+    if not cp_ids:
+        print("[CENTRAL] Warning: No hay CPs registrados")
+        return
+    
+    print(f"\n[CENTRAL] Mandando orden {order_type} a todos los CPs: ({len(cp_ids)} CPs)")
+    
+    exitos = 0
+    for cp_id in cp_ids:
+        if send_order_cp(cp_id, order_type):
+            exitos += 1
+
+    print(f"[CENTRAL] Orden mandada con éxito a {exitos}/{len(cp_ids)} CPs\n")
+
 ######################### MAIN ##########################
-'''
-if len(sys.argv) == 4:
-    port = int(sys.argv[1])
-    ip_broker = sys.argv[2]
-    puerto_broker = int(sys.argv[3])
-else:
-    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [IP Broker] [Puerto Broker]")
-'''
+
+if len(sys.argv) != 4:
+    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [Kafka IP] [Kafka Puerto] [Kafka Broker]")
+    sys.exit(1)
+
+PORT = int(sys.argv[1])
+kafka_ip = sys.argv[2]
+kafka_port = int(sys.argv[3])
+kafka_broker = f"{kafka_ip}:{kafka_port}"
+
+
+print("[CENTRAL] - Sistema de Control EV Charging")
+print("------------------------------------------------------")
+print(f"Puerto de escucha: {PORT}")
+print(f"Kafka Broker: {kafka_broker}")
+
+
 #Creamos el servidor
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 #Bindeamos el localHost y el puerto
@@ -182,8 +485,32 @@ print("[STARTING] Servidor inicializándose...")
 search_CP()
 print("ACABO")
 
+if not inicia_kafka_producer(kafka_broker):
+    print("[CENTRAL] Error: Kafka no disponible")
+
+if not inicia_kafka_consumer(kafka_broker):
+    print("[CENTRAL] Error: Kafka no disponible")
+
 t1 = threading.Thread(target=start_socket, daemon=True)
 t1.start()
-t1.join()
+#t1.join()
+
+
+if kafka_consumer:
+    consumer_thread = threading.Thread(target=kafka_consumer_thread, daemon=True)
+    consumer_thread.start()
+
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\n[CENTRAL] Cerrando sistema")
+finally:
+    if kafka_producer:
+        kafka_producer.close()
+    if kafka_consumer:
+        kafka_consumer.close()
+    print("[CENTRAL] Sistema cerrado")
 
 print("ACABO")
