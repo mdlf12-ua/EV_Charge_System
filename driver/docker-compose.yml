@@ -1,0 +1,13 @@
+services:
+  driver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: driver-DRV001
+    environment:
+      # Kafka externo (listener EXTERNAL)
+      KAFKA_BROKER: 192.168.18.28:9092
+      # Identidad del conductor/cliente
+      DRIVER_ID: DRV001
+
+
