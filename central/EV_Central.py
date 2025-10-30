@@ -11,6 +11,9 @@ from kafka import KafkaConsumer
 # Topics Kafka:
 # CONSUMIDOR: solicitud-recarga (del Driver)
 # # CONSUMIDOR: solicitud-cps (del Driver)
+#CONSUMIDOR: cp-register (del Engine)
+#CONSUMIDOR: cp-estado (del Engine)
+#CONSUMIDOR: cp-telemetria (del Engine)
 # PRODUCTOR: notificaciones-{driver_id} (al Driver)
 # PRODUCTOR: datos-consumo-{driver_id} (telemetría al Driver)
 # PRODUCTOR: cp-ordenes (al Engine)               
@@ -212,7 +215,10 @@ def inicia_kafka_consumer(kafka_broker):
     try:
         kafka_consumer = KafkaConsumer(
             'solicitud-recarga',
-            'solicitud-cps',  # Topic donde los Drivers envían solicitudes
+            'solicitud-cps',
+            'cp-register',
+            'cp-estado',
+            'cp-telemetria',  # Topic donde los Drivers envían solicitudes
             bootstrap_servers=[kafka_broker],
             group_id='central-group',
             value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
@@ -324,7 +330,8 @@ def solicitud_recarga(driver_id, cp_id):
                 "message": "Suministro autorizado. Puede enchufarse al CP"
             })
 
-            #Enviar orden al engine
+            
+            
 
     else:
         print(f"[CENTRAL] CP {cp_id} NO disponible: {razon}")
@@ -343,15 +350,15 @@ def kafka_consumer_thread():
         try:
             for message in kafka_consumer:
                 data=message.value
-                msg_type=data.get("type")
+                topic = message.topic 
 
-                if msg_type == "solicitud-recarga":
+                if topic == "solicitud-recarga":
                     driver_id=data.get("driver_id")
                     cp_id=data.get("cp_id")
                     solicitud_recarga(driver_id, cp_id)
 
 
-                elif msg_type == "solicitud-cps":
+                elif topic == "solicitud-cps":
                     driver_id = data.get("driver_id")
                     if driver_id:
                         enviar_lista_cps(driver_id)
@@ -359,10 +366,59 @@ def kafka_consumer_thread():
                     else:
                         print("[CENTRAL] solicitud-lista-cps sin driver_id valida")
 
+                elif topic=="cp-register":
+                    cp_id=data.get("cp_id")
+                    ubicacion=data.get("ubicacion")
+                    precio_kwh = data.get("precio_kwh")
+                    status = data.get("status")
+                    print(f"\n[CENTRAL] Nuevo CP registrado:")
+                    print(f"            ID: {cp_id}")
+                    print(f"            Ubicación: {ubicacion}")
+                    print(f"            Precio: {precio_kwh} €/kWh")
+                    print(f"            Estado: {status}\n")
+                
+                    with lock:
+                        central_cps[cp_id] = {
+                            "ID": cp_id,
+                            "Ubicacion": ubicacion,
+                            "PRECIO": precio_kwh,
+                            "ESTADO": status,
+                            "CONDUCTOR_ID": None,
+                            "CONSUMO_KW": 0.0,
+                            "IMPORTE_EU": 0.0
+                        }
+
+                elif topic=="cp-estado":
+                    cp_id=data.get("cp_id")
+
+                    print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
+                    with lock:
+                            if cp_id in central_cps:
+                                central_cps[cp_id]["ESTADO"] = status
+
+                elif topic=="cp-telemetria":
+                    cp_id = data.get("cp_id")
+                    conductor_id = data.get("conductor_id")
+                    consumo_kw = data.get("consumo_kw")
+                    importe_euro = data.get("importe_euro")
+
+                    with lock:
+                        if cp_id in central_cps:
+                            central_cps[cp_id]["CONSUMO_KW"] = consumo_kw
+                            central_cps[cp_id]["IMPORTE_EU"] = importe_euro
+                        
+                        enviar_datos_consumo(conductor_id, cp_id, consumo_kw, importe_euro)
+
+                else:
+                    print(f"[CENTRAL] Topic no reconocido: {topic}")
+
 
         except Exception as e:
             print(f"[CENTRAL] Error en consumer thread: {e}")
             time.sleep(1)
+
+
+
 
 def enviar_datos_consumo(driver_id, cp_id, consumo_kw, importe_euro):
 
