@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY EV_Central.py .
 
-CMD ["python","-u","EV_Central.py"]
+CMD ["python","-u","EV_Central.py","5000","192.168.18.28","9092"]
