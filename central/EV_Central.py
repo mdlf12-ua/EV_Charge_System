@@ -179,53 +179,65 @@ def start_socket():
             CONEX_ACTUALES = threading.active_count()-1
         
 
-def inicia_kafka_producer(kafka_broker):
+def inicia_kafka_producer(kafka_broker,max_retries=10, delay=5):
 
     global kafka_producer
 
     print(f"[CENTRAL] Conectando a Kafka broker: {kafka_broker}")
+    for intento in range(1, max_retries + 1):
+        try:
 
-    try:
+            kafka_producer = KafkaProducer(
+                bootstrap_servers=[kafka_broker],
+                value_serializer=lambda v: json.dumps(v).encode('utf-8'), #Formato JSON
+                acks='all', #Espera confirmacion antes de considerar el mensaje como enviado
+                retries=RETRIES #Reintentos si falla
+            )
 
-        kafka_producer = KafkaProducer(
-            bootstrap_servers=[kafka_broker],
-            value_serializer=lambda v: json.dumps(v).encode('utf-8'), #Formato JSON
-            acks='all', #Espera confirmacion antes de considerar el mensaje como enviado
-            retries=RETRIES #Reintentos si falla
-        )
+            print(f"[CENTRAL] Productor Kafka conectado a {kafka_broker}")
+            return True
 
-        print(f"[CENTRAL] Productor Kafka conectado a {kafka_broker}")
-        return True
+        except Exception as e:
 
-    except Exception as e:
+            print(f"[ENGINE] Error conectando productor Kafka: {e}")
+            if intento < max_retries:
+                print(f"[CENTRAL] Reintentando en {delay} segundos...")
+                time.sleep(delay)
+            else:
+                print("[CENTRAL] No se pudo conectar a Kafka después de varios intentos.")
+                return False
+            return False
 
-        print(f"[ENGINE] Error conectando productor Kafka: {e}")
-        return False
 
-
-def inicia_kafka_consumer(kafka_broker):
+def inicia_kafka_consumer(kafka_broker,max_retries=10, delay=5):
 
     global kafka_consumer
 
     print(f"[CENTRAL] Conectando consumidor a Kafka: {kafka_broker}")
+    for intento in range(1, max_retries + 1):
+        try:
+            kafka_consumer = KafkaConsumer(
+                'solicitud-recarga',
+                'solicitud-cps',  # Topic donde los Drivers envían solicitudes
+                bootstrap_servers=[kafka_broker],
+                group_id='central-group',
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
+                auto_offset_reset='latest',
+                enable_auto_commit=True,
+                consumer_timeout_ms=TIMEOUT
+            )
+            print(f"[CENTRAL] Consumidor Kafka conectado\n")
+            return True
 
-    try:
-        kafka_consumer = KafkaConsumer(
-            'solicitud-recarga',
-            'solicitud-cps',  # Topic donde los Drivers envían solicitudes
-            bootstrap_servers=[kafka_broker],
-            group_id='central-group',
-            value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
-            auto_offset_reset='latest',
-            enable_auto_commit=True,
-            consumer_timeout_ms=TIMEOUT
-        )
-        print(f"[CENTRAL] Consumidor Kafka conectado\n")
-        return True
-
-    except Exception as e:
-        print(f"[CENTRAL] Error conectando consumidor Kafka: {e}")
-        return False
+        except Exception as e:
+            print(f"[CENTRAL] Error conectando consumidor Kafka: {e}")
+            if intento < max_retries:
+                print(f"[CENTRAL] Reintentando en {delay} segundos...")
+                time.sleep(delay)
+            else:
+                print("[CENTRAL] No se pudo conectar a Kafka después de varios intentos.")
+                return False
+            return False
 
 def enviar_lista_cps(driver_id):
 
