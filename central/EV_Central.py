@@ -366,7 +366,7 @@ def kafka_consumer_thread():
                     else:
                         print("[CENTRAL] solicitud-lista-cps sin driver_id valida")
 
-                elif topic=="cp-register":
+                elif topic=='cp-register':
                     cp_id=data.get("cp_id")
                     ubicacion=data.get("ubicacion")
                     precio_kwh = data.get("precio_kwh")
@@ -394,6 +394,7 @@ def kafka_consumer_thread():
                     print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
                     with lock:
                             if cp_id in central_cps:
+                                status = data.get("status")
                                 central_cps[cp_id]["ESTADO"] = status
 
                 elif topic=="cp-telemetria":
@@ -516,9 +517,10 @@ def send_order_all_cps(order_type):
 
 ######################### MAIN ##########################
 
-if len(sys.argv) != 4:
-    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [Kafka IP] [Kafka Puerto] [Kafka Broker]")
-    sys.exit(1)
+
+print("Argumentos recibidos:")
+for i, arg in enumerate(sys.argv):
+    print(f"{i}: {arg}")
 
 PORT = int(sys.argv[1])
 kafka_ip = sys.argv[2]
