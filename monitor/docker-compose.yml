@@ -1,0 +1,21 @@
+services:
+  engine:
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine
+    ports:
+      - "6000:6000"       # Exponemos el puerto por si quieres probar desde fuera
+    environment:
+      - KAFKA_BROKER=192.168.18.18:9092  # O la IP real de tu central
+
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor
+    depends_on:
+      engine:
+        condition: service_started
+
+
