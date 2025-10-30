@@ -518,10 +518,10 @@ def send_order_all_cps(order_type):
 ######################### MAIN ##########################
 
 
-print("Argumentos recibidos:")
-for i, arg in enumerate(sys.argv):
-    print(f"{i}: {arg}")
-
+if len(sys.argv) != 4:
+    print("Uso correcto: python3 EV_central.py [Puerto de Escucha] [Kafka IP] [Kafka Puerto] [Kafka Broker]")
+    sys.exit(1)
+    
 PORT = int(sys.argv[1])
 kafka_ip = sys.argv[2]
 kafka_port = int(sys.argv[3])

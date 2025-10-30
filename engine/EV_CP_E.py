@@ -9,11 +9,13 @@ from kafka import KafkaProducer
 #                     cp-ordenes
 #
 
+PORT = 6000
+SERVER = "0.0.0.0"
+ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
 HEADER = 64
 MAX_CONEXIONES = 20
-FIN = "FIN"
-TIMEOUT=5000 #in miliseconds
+TIMEOUT = 5000 #In miliseconds
 
 kafka_producer = None
 kafka_consumer = None
@@ -34,113 +36,67 @@ cp_state = {
 }
 
 def send_msg(conn, msg):
-    """Envía un mensaje con header de longitud"""
     message = msg.encode(FORMAT)
     msg_length = len(message)
-    send_length = str(msg_length).encode(FORMAT)
-    send_length += b' ' * (HEADER - len(send_length))
-    conn.send(send_length)
-    conn.send(message)
+    header = f"{msg_length:<{HEADER}}".encode(FORMAT)
+    conn.send(header + message)
 
 def receive_msg(conn):
-    """Recibe un mensaje con encabezado de longitud fija (HEADER)."""
     try:
-        # Recibimos la longitud del mensaje
         msg_length = conn.recv(HEADER).decode(FORMAT).strip()
         if not msg_length:
             return None
-
-        msg_length = int(msg_length)
-        # Ahora recibimos el mensaje real
-        msg = conn.recv(msg_length).decode(FORMAT)
+        msg = conn.recv(int(msg_length)).decode(FORMAT)
         return msg
     except Exception as e:
         print(f"[ENGINE] Error al recibir mensaje: {e}")
         return None
 
 
-def handle_client(conn, ip):
+def handle_client(conn, addr):
     global cp_state
-    print(f"[NUEVA CONEXION] {ip} connected.")
 
-    registered = False
-    connected = True
+    print(f"[ENGINE] Nueva conexión desde {addr}")
 
-    while connected:
+    # Esperamos mensaje de registro
+    msg = receive_msg(conn)
+    if not msg or not msg.startswith("CP_ID:"):
+        send_msg(conn, "ERROR: Debes enviar CP_ID:<id>")
+        conn.close()
+        return
+
+    cp_id = msg.split(":", 1)[1].strip()
+    cp_state["cp_id"] = cp_id
+    cp_state["status"] = "ACTIVADO"
+    print(f"[ENGINE] Registrado CP_ID = {cp_id}")
+
+    send_msg(conn, "OK")
+
+    # Ahora podemos iniciar Kafka
+    iniciar_kafka(cp_id, kafka_broker)
+
+    # Bucle principal
+    while True:
         msg = receive_msg(conn)
-        if msg is None:  # desconexión limpia o error de lectura
+        if not msg:
             break
 
-        if msg_length:
-            msg_length = int(msg_length)
-            msg = conn.recv(msg_length).decode(FORMAT)
-
-            if msg == FIN:
-                connected = False
-                print("[ENGINE] Monitor desconectado")
-
-            elif msg=="HEALTHSTATUS":
-                send_msg(conn, cp_state["health_status"])
-
-            elif msg=="STOP":
-
-                print("[ENGINE] Central ordena que paremos")
-                cp_state["status"]="PARADO"
-                cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por socket")
-                send_msg(conn, "OK")
-
-
-
-            elif msg=="CONTINUE":
-
-                print("[ENGINE] Central ordena que reanudemos")
-                cp_state["status"]="ACTIVADO"
-                cp_state["health_status"] = "OK"
-                print("[ENGINE] CP Parado por socket")
-                send_msg(conn, "OK")
-
-            #msg==registrar
-
-                # (opcional) devolver snapshot inicial de estado
-                # ej: send_msg(conn, f"STATE:{cp_state['status']}:{cp_state['health_status']}")
-                continue
-            else:
-                # si llega otra cosa antes del CP_ID, la rechazamos
-                print(f"[ENGINE] Esperaba CP_ID:<id>, recibido: {msg!r}")
-                send_msg(conn, "ERROR: Primero envía CP_ID:<id>")
-                # puedes decidir: o seguir esperando, o cortar:
-                # connected = False
-                continue
-
-        # --- 2) Protocolo normal tras estar registrado ---
-        if msg == FIN:
-            connected = False
-            print("[ENGINE] Monitor desconectado")
-
-        elif msg == "HEALTHSTATUS":
+        if msg == "HEALTHSTATUS":
             send_msg(conn, cp_state["health_status"])
-
         elif msg == "STOP":
-            print("[ENGINE] Central ordena que paremos")
             cp_state["status"] = "PARADO"
-            cp_state["health_status"] = "OK"
-            print("[ENGINE] CP Parado por central")
             send_msg(conn, "OK")
-
         elif msg == "CONTINUE":
-            print("[ENGINE] Central ordena que reanudemos")
             cp_state["status"] = "ACTIVADO"
-            cp_state["health_status"] = "OK"
-            print("[ENGINE] CP reanudado por central")
             send_msg(conn, "OK")
-
+        elif msg == "FIN":
+            break
         else:
-            print(f"[ENGINE] Mensaje no reconocido: {msg!r}")
-            send_msg(conn, "ERROR: Mensaje no reconocido")
+            send_msg(conn, "ERROR: comando desconocido")
 
-    print("CERRANDO CONEXIÓN CON EL CLIENTE")
+    print("[ENGINE] Monitor desconectado")
     conn.close()
+
 
 
 
@@ -148,23 +104,11 @@ def start_socket_monitor():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(ADDR)
     server.listen()
-    print(f"[ENGINE] Servidor a la escucha en {SERVER}")
+    print(f"[ENGINE] Escuchando en {SERVER}:{PORT}")
 
-    CONEX_ACTIVAS = threading.active_count()-1
-    print(CONEX_ACTIVAS)
     while True:
         conn, addr = server.accept()
-        CONEX_ACTIVAS = threading.active_count()
-        if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
-            thread = threading.Thread(target=handle_client, args=(conn, addr))
-            thread.start()
-            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
-        else:
-            print("DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
-            conn.send("DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
-            conn.close()
-            CONEX_ACTUALES = threading.active_count()-1
+        threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
 
 
 def iniciar_kafka_producer(broker):
@@ -291,14 +235,12 @@ def kafka_consumer_thread(kafka_broker, cp_id):
         print(f"[ENGINE] Error en Consumidor Kafka: {e}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Uso: python EV_CP_E.py <IP> <PORT> <KAFKA_BROKER> <CP_ID>")
+    if len(sys.argv) != 2:
+        print("Uso: python EV_CP_E.py <KAFKA_BROKER>")
         sys.exit(1)
 
-    ip = sys.argv[1]
-    port = int(sys.argv[2])
-    kafka_broker = sys.argv[3]
-    cp_id = sys.argv[4]
+    kafka_broker = sys.argv[1]
+    cp_id=1
 
 
     cp_state["cp_id"] = cp_id
@@ -306,7 +248,7 @@ if __name__ == "__main__":
 
     print(f"[ENGINE] - Punto de Recarga {cp_id}\n")
     print("----------------------------------------\n")
-    print(f"Socket Monitor: {ip}:{port}\n")
+    print(f"Socket Monitor: {SERVER}:{PORT}\n")
     print(f"Kafka Broker: {kafka_broker}\n")
 
     iniciar_kafka_producer(kafka_broker)
@@ -327,6 +269,6 @@ if __name__ == "__main__":
         "precio_kwh": 0.30
     })
 
-    start_socket_monitor(ip, port)
+    start_socket_monitor()
 
     
