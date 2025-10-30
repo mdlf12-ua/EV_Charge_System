@@ -9,4 +9,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY EV_CP_E.py .
 
 # Por ahora dejamos los argumentos fijos
-CMD ["python","-u","EV_CP_E.py","192.168.1.10","5000"]
+CMD ["python","-u","EV_CP_E.py","192.168.18.18:9092"]
