@@ -78,6 +78,7 @@ def search_CP():
 
 
 #Función que utilizara cada hilo para antender a un cliente
+#Función que utilizara cada hilo para antender a un cliente
 def handle_CP(conn, addr):
     print(f"[NUEVA CONEXION] {addr} connected.")
     #############################################

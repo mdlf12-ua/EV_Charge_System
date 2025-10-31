@@ -72,6 +72,8 @@ def handle_client(conn, addr):
 
     send_msg(conn, "OK")
 
+    # Ahora podemos iniciar Kafka
+    #iniciar_kafka(cp_id, kafka_broker)
 
     # Bucle principal
     while True:
