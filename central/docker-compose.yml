@@ -15,7 +15,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 #Una copia de los metadatos del kafka porque tenemos un nodo en el cluster
 
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.1.35:9092 #PLAINTEXT_HOST://192.168.56.1:9092 #Hay que poner la IP del que lanza el docker en vez de kafka
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.18.28:9092 #PLAINTEXT_HOST://192.168.18.28:9092 #Hay que poner la IP del que lanza el docker en vez de kafka
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
 
@@ -34,7 +34,7 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - ./db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
 
     healthcheck:
       test: ["CMD-SHELL","mysqladmin ping -h localhost -u$MYSQL_USER -p$MYSQL_PASSWORD || exit 1"]
@@ -44,7 +44,7 @@ services:
 
   ev_central:
     build:
-      context: ./central
+      context: .
       dockerfile: Dockerfile
     depends_on:
       mysql:
@@ -57,12 +57,5 @@ services:
       DB_NAME: database
     ports:
       - "5000:5000"
-
-  monitor:
-    build:
-      context: ./monitor
-      dockerfile: Dockerfile
-    restart: unless-stopped
-
 volumes:
   kafka_kraft:
