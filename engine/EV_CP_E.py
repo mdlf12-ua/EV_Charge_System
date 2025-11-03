@@ -238,10 +238,10 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Uso: python EV_CP_E.py <KAFKA_BROKER>")
         sys.exit(1)
+    
 
     kafka_broker = sys.argv[1]
     cp_id=1
-
 
     cp_state["cp_id"] = cp_id
     cp_state["status"] = "ACTIVADO"
@@ -251,6 +251,9 @@ if __name__ == "__main__":
     print(f"Socket Monitor: {SERVER}:{PORT}\n")
     print(f"Kafka Broker: {kafka_broker}\n")
 
+
+    threading.Thread(target=start_socket_monitor, daemon=True).start()
+    time.sleep(1)
     iniciar_kafka_producer(kafka_broker)
 
     kafka_thread = threading.Thread(
@@ -269,6 +272,6 @@ if __name__ == "__main__":
         "precio_kwh": 0.30
     })
 
-    start_socket_monitor()
+    
 
     
