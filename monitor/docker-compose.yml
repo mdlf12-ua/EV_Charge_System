@@ -7,7 +7,7 @@ services:
     ports:
       - "6000:6000"       # Exponemos el puerto por si quieres probar desde fuera
     environment:
-      - KAFKA_BROKER=192.168.18.18:9092  # O la IP real de tu central
+      KAFKA_BROKER: 192.168.18.18:9092
 
   monitor:
     build:
@@ -17,5 +17,10 @@ services:
     depends_on:
       engine:
         condition: service_started
-
+    environment:
+      ENGINE_IP: engine
+      ENGINE_PORT: 6000
+      CENTRAL_IP: 192.168.18.18
+      CENTRAL_PORT: 5000
+      CP_ID: CP001
 
