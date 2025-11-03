@@ -61,5 +61,9 @@ services:
       DB_NAME: database
     ports:
       - "5000:5000"
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./logs:/app/logs
 volumes:
   kafka_kraft:

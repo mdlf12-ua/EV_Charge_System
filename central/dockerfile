@@ -8,4 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY EV_Central.py .
 
+RUN mkdir -p /app/logs
+
 CMD ["sh", "-c", "python -u EV_Central.py ${CENTRAL_PORT} ${KAFKA_IP} ${KAFKA_PORT}"]
