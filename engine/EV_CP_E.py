@@ -72,6 +72,34 @@ def handle_client(conn, addr):
 
     send_msg(conn, "OK")
 
+
+
+    cp_state["cp_id"] = cp_id
+    cp_state["status"] = "ACTIVADO"
+
+    print(f"[ENGINE] - Punto de Recarga {cp_id}\n")
+    print("----------------------------------------\n")
+    print(f"Socket Monitor: {SERVER}:{PORT}\n")
+    print(f"Kafka Broker: {kafka_broker}\n")
+
+
+
+    kafka_thread = threading.Thread(
+        target=kafka_consumer_thread, 
+        args=(kafka_broker, cp_id),
+        daemon=True #El daemon hace que cuando acabe el hilo se borre
+    )
+    kafka_thread.start()
+
+    print(f"[ENGINE] Registrando CP en la central...\n")
+    send_to_kafka('cp-register', {
+        "cp_id": cp_id,
+        "status": "ACTIVADO",
+        "timestamp": time.time(),
+        "ubicacion": "X",
+        "precio_kwh": 0.30
+    })
+
     # Ahora podemos iniciar Kafka
     #iniciar_kafka(cp_id, kafka_broker)
 
@@ -240,35 +268,22 @@ if __name__ == "__main__":
         sys.exit(1)
     
 
+
     kafka_broker = sys.argv[1]
-    cp_id=1
-
-    cp_state["cp_id"] = cp_id
-    cp_state["status"] = "ACTIVADO"
-
-    print(f"[ENGINE] - Punto de Recarga {cp_id}\n")
-    print("----------------------------------------\n")
-    print(f"Socket Monitor: {SERVER}:{PORT}\n")
+    
+    print(f"[ENGINE] Esperando conexión de Monitor...\n")
+    print(f"Socket Monitor: {SERVER}:{PORT}")
     print(f"Kafka Broker: {kafka_broker}\n")
 
-
-
-    kafka_thread = threading.Thread(
-        target=kafka_consumer_thread, 
-        args=(kafka_broker, cp_id),
-        daemon=True #El daemon hace que cuando acabe el hilo se borre
-    )
-    kafka_thread.start()
-
-    print(f"[ENGINE] Registrando CP en la central...\n")
-    send_to_kafka('cp-register', {
-        "cp_id": cp_id,
-        "status": "ACTIVADO",
-        "timestamp": time.time(),
-        "ubicacion": "X",
-        "precio_kwh": 0.30
-    })
-
     start_socket_monitor()
+
+
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n[ENGINE] Apagando...")
+    
 
     
