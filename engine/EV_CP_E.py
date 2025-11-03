@@ -252,9 +252,6 @@ if __name__ == "__main__":
     print(f"Kafka Broker: {kafka_broker}\n")
 
 
-    threading.Thread(target=start_socket_monitor, daemon=True).start()
-    time.sleep(1)
-    iniciar_kafka_producer(kafka_broker)
 
     kafka_thread = threading.Thread(
         target=kafka_consumer_thread, 
@@ -272,6 +269,6 @@ if __name__ == "__main__":
         "precio_kwh": 0.30
     })
 
-    
+    start_socket_monitor()
 
     
