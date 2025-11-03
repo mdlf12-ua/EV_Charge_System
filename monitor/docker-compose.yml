@@ -16,4 +16,4 @@ services:
     container_name: monitor
     depends_on:
       engine:
-        condition: service_startedcmd
+        condition: service_startedn
