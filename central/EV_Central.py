@@ -549,6 +549,137 @@ def send_order_all_cps(order_type):
 
     print(f"[CENTRAL] Orden mandada con éxito a {exitos}/{len(cp_ids)} CPs\n")
 
+def show_cp_status():
+    """
+    Muestra el estado actual de todos los CPs registrados en la central.
+    Inspirado en el "MONITORIZATION PANEL" del PDF [cite: 75-100].
+    """
+    print("\n---  MONITORIZACIÓN DE CHARGING POINTS ---")
+    
+    # Usamos el lock para asegurar una lectura segura del diccionario
+    with lock:
+        if not central_cps:
+            print(" [CENTRAL] No hay Charging Points registrados o conectados.")
+            print("---------------------------------------------")
+            return
+
+        # Ordenamos por ID para una visualización consistente
+        sorted_cp_ids = sorted(central_cps.keys())
+        
+        for cp_id in sorted_cp_ids:
+            cp = central_cps[cp_id]
+            
+            # Obtenemos valores con 'get' para evitar errores si una clave falta
+            estado = cp.get("ESTADO", "DESCONOCIDO")
+            ubicacion = cp.get("Ubicacion", "N/A")
+            precio = cp.get("PRECIO", 0.0)
+            
+            print(f"\n [CP ID]: {cp_id} ({ubicacion})")
+            print(f"   Precio: {precio} €/kWh")
+            
+            # Damos formato al estado según el PDF
+            if estado == "ACTIVADO":
+                print(f"   Estado: {estado} (VERDE - Disponible)")
+            elif estado == "SUMINISTRANDO":
+                conductor = cp.get("CONDUCTOR_ID", "N/A")
+                consumo = cp.get("CONSUMO_KW", 0.0)
+                importe = cp.get("IMPORTE_EU", 0.0)
+                print(f"   Estado: {estado} (VERDE - Ocupado)")
+                print(f"     > Conductor: {conductor}")
+                print(f"     > Consumo: {consumo:.2f} kWh")
+                print(f"     > Importe: {importe:.2f} €")
+            elif estado == "PARADO":
+                print(f"   Estado: {estado} (NARANJA - Out of Order)") # [cite: 84, 85]
+            elif estado == "AVERIADO":
+                print(f"   Estado: {estado} (ROJO - Averiado)") # [cite: 98, 99]
+            elif estado == "DESCONECTADO":
+                print(f"   Estado: {estado} (GRIS - Desconectado)") # [cite: 100, 168]
+            else:
+                 print(f"   Estado: {estado} (Desconocido)")
+
+    print("\n---------------------------------------------")
+
+
+def menu_send_order_one():
+    """
+    Menú para enviar una orden (STOP/CONTINUE) a un CP específico.
+    """
+    cp_id = input("  Introduce el ID del CP: ").strip()
+    
+    # Verificamos que el CP existe antes de enviar la orden
+    with lock:
+        if cp_id not in central_cps:
+            print(f"  [ERROR] CP ID '{cp_id}' no encontrado.")
+            return
+
+    print(f"  ¿Qué orden quieres enviar a {cp_id}?")
+    print("    1. Parar (Poner Fuera de Servicio)")
+    print("    2. Reanudar (Poner en Activado)")
+    orden = input("  Elige (1-2): ").strip()
+
+    if orden == "1":
+        print(f"  Enviando STOP a {cp_id}...")
+        # Esta es tu función existente
+        send_order_cp(cp_id, "STOP")
+    elif orden == "2":
+        print(f"  Enviando CONTINUE a {cp_id}...")
+        # Esta es tu función existente
+        send_order_cp(cp_id, "CONTINUE")
+    else:
+        print("  Opción no válida.")
+
+
+def menu_send_order_all():
+    """
+    Menú para enviar una orden (STOP/CONTINUE) a TODOS los CPs.
+    """
+    print(f"  ¿Qué orden quieres enviar a TODOS los CPs?")
+    print("    1. Parar (Poner Fuera de Servicio)")
+    print("    2. Reanudar (Poner en Activado)")
+    orden = input("  Elige (1-2): ").strip()
+
+    if orden == "1":
+        print(f"  Enviando STOP a TODOS los CPs...")
+        # Esta es tu función existente
+        send_order_all_cps("STOP")
+    elif orden == "2":
+        print(f"  Enviando CONTINUE a TODOS los CPs...")
+        # Esta es tu función existente
+        send_order_all_cps("CONTINUE")
+    else:
+        print("  Opción no válida.")
+
+
+def central_menu():
+    """
+    Bucle principal del menú interactivo de la Central.
+    """
+    while True:
+        print("\n=====================================")
+        print(" 🏛️  PANEL DE CONTROL EV_CENTRAL 🏛️")
+        print("=====================================")
+        print(" 1. Mostrar estado de todos los CPs")
+        print(" 2. Enviar orden (Parar/Reanudar) a un CP")
+        print(" 3. Enviar orden (Parar/Reanudar) a TODOS los CPs")
+        print(" 0. Salir (Apagar Central)")
+        print("=====================================")
+        
+        opcion = input(" Selecciona una opción: ").strip()
+
+        if opcion == "1":
+            show_cp_status()
+        elif opcion == "2":
+            menu_send_order_one()
+        elif opcion == "3":
+            menu_send_order_all()
+        elif opcion == "0":
+            print("[CENTRAL] Opción 0 seleccionada. Saliendo...")
+            break # Rompe el bucle del menú para apagar
+        else:
+            print(f"[ERROR] Opción '{opcion}' no válida. Inténtalo de nuevo.")
+
+
+
 ######################### MAIN ##########################
 
 
@@ -594,8 +725,8 @@ if kafka_consumer:
 
 
 try:
-    while True:
-        time.sleep(1)
+    central_menu()
+
 except KeyboardInterrupt:
     print("\n[CENTRAL] Cerrando sistema")
 finally:
