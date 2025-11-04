@@ -283,8 +283,12 @@ def menu_local_cp():
                     print("[ENGINE] No hay suministro activo")
 
             elif opcion == "0":
-                print("[ENGINE] Cerrando menú...")
-                break
+
+                if cp_state["suministro_activo"]:
+                    print("[ENGINE] Suministro activo, desenchufe primero el vehiculo para salir de la aplicación")
+                else:
+                    print("[ENGINE] Cerrando menú...")
+                    break
 
         except KeyboardInterrupt:
             print("\n[ENGINE] Interrumpido")
