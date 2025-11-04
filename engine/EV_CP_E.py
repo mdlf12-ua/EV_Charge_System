@@ -207,6 +207,10 @@ def handle_kafka_message(message):
                     "reason": "orden_central"
                     })
 
+                    if cp_state["status"]=="SUMINISTRANDO":
+                        stop_suministro.set()
+
+
             elif message_type=="CONTINUE":
 
                 print(f"\n[ENGINE] REANUDAR recibido desde CENTRAL mediante Kafka")
@@ -360,12 +364,9 @@ def finalizar_suministro(duracion):
     print(f"[ENGINE] Importe total: {cp_state['importe_euro']:.2f} €")
     print(f"[ENGINE] Duración: {duracion:.0f} segundos\n")
     
-
-    cp_state["suministro_activo"] = False
-    cp_state["conductor_id"] = None
     cp_state["status"] = "ACTIVADO"
-    cp_state["consumo_kw"] = 0.0
-    cp_state["importe_euro"] = 0.0
+
+
 
     send_to_kafka('cp-estado', {
         "type": "suministro_finalizado",
@@ -378,6 +379,10 @@ def finalizar_suministro(duracion):
         "timestamp": time.time()
     })
     
+    cp_state["suministro_activo"] = False
+    cp_state["conductor_id"] = None
+    cp_state["consumo_kw"] = 0.0
+    cp_state["importe_euro"] = 0.0
 
 def kafka_consumer_thread(kafka_broker, cp_id):
 
