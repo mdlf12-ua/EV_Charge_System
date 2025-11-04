@@ -89,6 +89,7 @@ def conectar_central(central_ip, central_port,cp_id):
 def conectar_engine(engine_ip, engine_port,cp_id):
     print(f"[MONITOR] Conectando al Engine ({engine_ip}:{engine_port})...")
     engine_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     engine_socket.connect((engine_ip, engine_port))
 
     send_msg(engine_socket, f"CP_ID:{cp_id}")

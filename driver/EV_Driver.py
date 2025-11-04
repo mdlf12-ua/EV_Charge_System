@@ -217,7 +217,7 @@ def handle_kafka_message(message):
             
             if msg_type=="autorizacion_concedida":
                 print(f"\n[DRIVER] Suministro concedido en CP {data.get('cp_id')}")
-                #ahora se inicia el enchufado y desenchufado con menú
+                    
 
                 driver_state["current_cp"] = data.get("cp_id")
 

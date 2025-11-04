@@ -312,7 +312,7 @@ def notificar_driver(driver_id, msg_type, data):
 
 def solicitud_recarga(driver_id, cp_id):
 
-    print(f"\n[CENTRAL] Procesando olicitud de recarga:")
+    print(f"\n[CENTRAL] Procesando solicitud de recarga:")
     print(f"            Driver: {driver_id}")
     print(f"            CP: {cp_id}")
 
@@ -330,7 +330,7 @@ def solicitud_recarga(driver_id, cp_id):
                 "cp_id":cp_id,
                 "message": "Suministro autorizado. Puede enchufarse al CP"
             })
-
+            send_autorizacion_engine(cp_id, driver_id)
             
             
 
@@ -343,6 +343,29 @@ def solicitud_recarga(driver_id, cp_id):
         })
 
 
+def send_autorizacion_engine(cp_id, driver_id):
+    if not kafka_producer:
+        print("[CENTRAL] Productor Kafka no inicializado")
+        return False
+    
+    try:
+        message = {
+            "type": "autorizado",
+            "cp_id": cp_id,
+            "conductor_id": driver_id,
+            "timestamp": time.time()
+        }
+        
+        kafka_producer.send('autorizacion-suministro', value=message)
+        kafka_producer.flush()
+        
+        print(f"[CENTRAL] Autorización enviada a Engine {cp_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando autorización: {e}")
+        return False
+
 def kafka_consumer_thread():
      
      print("[CENTRAL] A la escucha de solicitudes de Drivers\n")
@@ -352,6 +375,7 @@ def kafka_consumer_thread():
             for message in kafka_consumer:
                 data=message.value
                 topic = message.topic 
+                msg_type=data.get("type")
 
                 if topic == "solicitud-recarga":
                     driver_id=data.get("driver_id")
@@ -391,6 +415,9 @@ def kafka_consumer_thread():
 
                 elif topic=="cp-estado":
                     cp_id=data.get("cp_id")
+
+                    if msg_type=="suministro_finalizado":
+                        mandar_ticket()
 
                     print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
                     with lock:
