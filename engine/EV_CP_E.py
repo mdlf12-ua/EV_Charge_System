@@ -249,19 +249,19 @@ def menu_local_cp():
     print(f"Estado: {cp_state['status']}")
     print("====================================")
     
-    while True:
-        print("\nOpciones:")
-        print("  1. Enchufar vehículo (iniciar suministro)")
-        print("  2. Desenchufar vehículo (finalizar suministro)")
-        print("  0. Salir")
-        print("-------------------------------------------------------")
+    #while True:
+    print("\nOpciones:")
+    print("  1. Enchufar vehículo (iniciar suministro)")
+    print("  2. Desenchufar vehículo (finalizar suministro)")
+    print("  0. Salir")
+    print("-------------------------------------------------------")
         
-        print("[ENGINE] Iniciando suministro...")
-        iniciar_suministro(cp_state["conductor_id"])
-        time.sleep(30)
-        print("[ENGINE] Deteniendo suministro...")
-        stop_suministro.set()
-        cp_state["suministro_activo"] = False
+    print("[ENGINE] Iniciando suministro...")
+    iniciar_suministro(cp_state["conductor_id"])
+    time.sleep(30)
+    print("[ENGINE] Deteniendo suministro...")
+    stop_suministro.set()
+    cp_state["suministro_activo"] = False
         # try:
         #     opcion = input("\nSelecciona una opción: ").strip()
             
