@@ -13,6 +13,51 @@ monitor_state = {
     "ubicacion": "Barcelona",
     "averiado": False
 }
+class EngineConnector():
+    def __init__(self,ip,port,cp_id):
+        self.ip = ip
+        self.puerto = port
+        self.id = cp_id
+        self.socket = None
+        self.thread = None
+        self.lock = threading.Lock()
+        self.connected = threading.Event()
+
+    def start(self):
+        if self.thread and self.thread.is_alive():
+                    return
+        self.thread = threading.Thread(target=self.try_connect_engine, daemon=True)
+        self.thread.start()
+    def connect_engine_once(self):
+        print(f"[MONITOR] Conectando al Engine ({self.ip}:{self.puerto})...")
+        engine_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        engine_socket.connect((engine_ip, engine_port))
+
+        send_msg(engine_socket, f"CP_ID:{cp_id}")
+        print(f"[MONITOR] ID {cp_id} enviada al Engine.")
+        return engine_socket
+    def try_connect_engine(self):
+        while True:
+            try:
+                socket_temp = self.connect_engine_once()
+                print("Socket Conectado")
+                with self.lock:
+                    self.socket = socket_temp
+                self.connected.set()
+                while self.connected.is_set():
+                    time.sleep(1)
+
+            except Exception as e:
+                self.connected.clear()
+                with self.lock:
+                    if self.socket:
+                        try:
+                            self.socket.close()
+                        except:
+                            pass
+                    self.socket = None
+                print(f"[MONITOR] No se pudo conectar al engine: {e}. Reintentando en 5s...")
+                time.sleep(5)
 
 def send_msg(sock, msg):
     message = msg.encode(FORMAT)
@@ -84,25 +129,20 @@ def conectar_central(central_ip, central_port,cp_id):
         print(f"[MONITOR] Error al conectar con Central: {e}")
         return None
 
-
-
-def conectar_engine(engine_ip, engine_port,cp_id):
-    print(f"[MONITOR] Conectando al Engine ({engine_ip}:{engine_port})...")
-    engine_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    engine_socket.connect((engine_ip, engine_port))
-
-    send_msg(engine_socket, f"CP_ID:{cp_id}")
-    print(f"[MONITOR] ID {cp_id} enviada al Engine.")
-    return engine_socket
-
 def healthstatus_periodico(engine_socket, central_socket):
     global monitor_state
-    print("\n[MONITOR] Empezando healthcecks periodicos\n")
+    print("\n[MONITOR] Empezando healthchecks periodicos\n")
 
     while True:
+        if not engine_socket.connected.wait(2):
+            continue
+        with engine_socket.lock:
+            s = engine_socket.socket 
+        if s is None:
+            continue
         try:
-            send_msg(engine_socket, "HEALTHSTATUS")
-            respuesta=receive_msg(engine_socket)
+            send_msg(s, "HEALTHSTATUS")
+            respuesta=receive_msg(s)
             print("Health")
             if respuesta is None:
                 if not monitor_state["averiado"]:
@@ -126,7 +166,6 @@ def healthstatus_periodico(engine_socket, central_socket):
 
         except ConnectionResetError:
             print("\n[MONITOR] Conexion con Engine perdida")
-            break
 
         except Exception as e:
             print(f"\n[MONITOR] Error en healthstatus: {e}")
@@ -154,6 +193,7 @@ if __name__ == "__main__":
 
 
 
-    engine_socket = conectar_engine(engine_ip, engine_port,cp_id)
+    engine_socket = EngineConnector(engine_ip, engine_port,cp_id)
+    engine_socket.start()
     central_socket = conectar_central(central_ip, central_port, cp_id)
     healthstatus_periodico(engine_socket, central_socket)
