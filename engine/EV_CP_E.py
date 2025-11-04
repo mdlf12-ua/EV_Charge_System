@@ -300,7 +300,7 @@ def iniciar_suministro(conductor_id):
         print("[ENGINE] Ya hay un suministro activo")
         return False
     if cp_state["status"] != "AUTORIZADO":
-        print(f"[ENGINE] ⚠️  CP no está autorizado (estado: {cp_state['status']})")
+        print(f"[ENGINE] CP no está autorizado (estado: {cp_state['status']})")
         return False
     print(f"\n[ENGINE] INICIANDO SUMINISTRO para conductor {conductor_id}")
 
@@ -332,7 +332,7 @@ def thread_suministro():
     while cp_state["suministro_activo"] and not stop_suministro.is_set():
 
         cp_state["consumo_kw"] += 0.5
-        cp_state["importe_euro"] = cp_state["consumo_kw"] * cp_state["precio_kwh"]
+        cp_state["importe_euro"] += 1
         
 
         send_to_kafka('cp-telemetria', {
