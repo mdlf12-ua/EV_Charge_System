@@ -419,7 +419,11 @@ def kafka_consumer_thread():
                     cp_id=data.get("cp_id")
 
                     if msg_type=="suministro_finalizado":
-                        mandar_ticket()
+                        conductor_id = data.get("conductor_id")
+                        consumo_kw = data.get("consumo_total")
+                        importe_euro = data.get("importe_total")
+                        duracion = data.get("duracion")
+                        mandar_ticket(cp_id, conductor_id, consumo_kw, importe_euro, duracion)
 
                     print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
                     with lock:
