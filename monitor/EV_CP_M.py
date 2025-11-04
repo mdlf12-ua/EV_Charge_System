@@ -168,6 +168,14 @@ def healthstatus_periodico(engine_socket, central_socket):
             print("\n[MONITOR] Conexion con Engine perdida")
 
         except Exception as e:
+            with engine_socket.lock:
+                if s == engine_socket.socket:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+                    engine_socket.socket = None
+                    engine_socket.connected.clear()
             print(f"\n[MONITOR] Error en healthstatus: {e}")
             time.sleep(HEALTHSTATUS_TIEMPO)
 
