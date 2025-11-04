@@ -14,9 +14,9 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: monitor
-    depends_on:
-      engine:
-        condition: service_started
+    #depends_on:
+      #engine:
+        #condition: service_started
     environment:
       ENGINE_IP: engine
       ENGINE_PORT: 6000
