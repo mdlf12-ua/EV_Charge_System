@@ -235,7 +235,6 @@ def handle_kafka_message(message):
             cp_state["status"] = "AUTORIZADO"
             cp_state["conductor_id"] = data.get("conductor_id")
             print(f"[ENGINE] Esperando que el conductor enchufe su vehículo\n")
-            menu_local_cp()
 
         else:
             print(f"[ENGINE] Mensaje recibido pero topic {topic} no reconocido")
@@ -253,49 +252,45 @@ def menu_local_cp():
     print(f"Estado: {cp_state['status']}")
     print("====================================")
     
-    #while True:
-    print("\nOpciones:")
-    print("  1. Enchufar vehículo (iniciar suministro)")
-    print("  2. Desenchufar vehículo (finalizar suministro)")
-    print("  0. Salir")
-    print("-------------------------------------------------------")
+    while True:
+
+        print("\nOpciones:")
+        print("  1. Enchufar vehículo (iniciar suministro)")
+        print("  2. Desenchufar vehículo (finalizar suministro)")
+        print("  0. Salir")
+        print("-------------------------------------------------------")
         
-    print("[ENGINE] Iniciando suministro...")
-    iniciar_suministro(cp_state["conductor_id"])
-    time.sleep(30)
-    print("[ENGINE] Deteniendo suministro...")
-    stop_suministro.set()
-    cp_state["suministro_activo"] = False
-        # try:
-        #     opcion = input("\nSelecciona una opción: ").strip()
+        try:
+            opcion = input("\nSelecciona una opción: ").strip()
             
-        #     if opcion == "1":
-        #         if cp_state["status"] == "AUTORIZADO":
-        #             if cp_state["conductor_id"]:
-        #                 iniciar_suministro(cp_state["conductor_id"])
-        #             else:
-        #                 print("[ENGINE] No hay conductor autorizado")
-        #         else:
-        #             print(f"[ENGINE] CP no está autorizado (estado: {cp_state['status']})")
-        #             print("[ENGINE] Primero debe recibir autorización de Central")
+            if opcion == "1":
+                if cp_state["status"] == "AUTORIZADO":
+                    if cp_state["conductor_id"]:
+                        iniciar_suministro(cp_state["conductor_id"])
+                    else:
+                        print("[ENGINE] No hay conductor autorizado")
+                else:
+                    print(f"[ENGINE] CP no está autorizado (estado: {cp_state['status']})")
+                    print("[ENGINE] Primero debe recibir autorización de Central")
                     
-        #     elif opcion == "2":
-        #         if cp_state["suministro_activo"]:
-        #             print("[ENGINE] Deteniendo suministro...")
-        #             stop_suministro.set()
-        #             cp_state["suministro_activo"] = False
-        #         else:
-        #             print("[ENGINE] No hay suministro activo")
+            elif opcion == "2":
+                
+                if cp_state["suministro_activo"]:
+                    print("[ENGINE] Deteniendo suministro...")
+                    stop_suministro.set()
+                    cp_state["suministro_activo"] = False
+                else:
+                    print("[ENGINE] No hay suministro activo")
 
-        #     elif opcion == "0":
-        #         print("[ENGINE] Cerrando menú...")
-        #         break
+            elif opcion == "0":
+                print("[ENGINE] Cerrando menú...")
+                break
 
-        # except KeyboardInterrupt:
-        #     print("\n[ENGINE] Interrumpido")
-        #     break
-        # except Exception as e:
-        #     print(f"[ENGINE] Error: {e}")
+        except KeyboardInterrupt:
+            print("\n[ENGINE] Interrumpido")
+            break
+        except Exception as e:
+            print(f"[ENGINE] Error: {e}")
 
 def iniciar_suministro(conductor_id):
     global cp_state, suministro_thread, stop_suministro
@@ -430,13 +425,14 @@ if __name__ == "__main__":
     print(f"Socket Monitor: {SERVER}:{PORT}")
     print(f"Kafka Broker: {kafka_broker}\n")
 
-    start_socket_monitor()
+    socket_thread = threading.Thread(target=start_socket_monitor, daemon=True)
+    socket_thread.start()
 
-
+    time.sleep(3)
 
     try:
-        while True:
-            time.sleep(1)
+        menu_local_cp()
+
     except KeyboardInterrupt:
         print("\n[ENGINE] Apagando...")
     
