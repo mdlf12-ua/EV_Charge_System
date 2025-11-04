@@ -256,36 +256,42 @@ def menu_local_cp():
         print("  0. Salir")
         print("-------------------------------------------------------")
         
-        try:
-            opcion = input("\nSelecciona una opción: ").strip()
+        print("[ENGINE] Iniciando suministro...")
+        iniciar_suministro(cp_state["conductor_id"])
+        time.sleep(30)
+        print("[ENGINE] Deteniendo suministro...")
+        stop_suministro.set()
+        cp_state["suministro_activo"] = False
+        # try:
+        #     opcion = input("\nSelecciona una opción: ").strip()
             
-            if opcion == "1":
-                if cp_state["status"] == "AUTORIZADO":
-                    if cp_state["conductor_id"]:
-                        iniciar_suministro(cp_state["conductor_id"])
-                    else:
-                        print("[ENGINE] No hay conductor autorizado")
-                else:
-                    print(f"[ENGINE] CP no está autorizado (estado: {cp_state['status']})")
-                    print("[ENGINE] Primero debe recibir autorización de Central")
+        #     if opcion == "1":
+        #         if cp_state["status"] == "AUTORIZADO":
+        #             if cp_state["conductor_id"]:
+        #                 iniciar_suministro(cp_state["conductor_id"])
+        #             else:
+        #                 print("[ENGINE] No hay conductor autorizado")
+        #         else:
+        #             print(f"[ENGINE] CP no está autorizado (estado: {cp_state['status']})")
+        #             print("[ENGINE] Primero debe recibir autorización de Central")
                     
-            elif opcion == "2":
-                if cp_state["suministro_activo"]:
-                    print("[ENGINE] Deteniendo suministro...")
-                    stop_suministro.set()
-                    cp_state["suministro_activo"] = False
-                else:
-                    print("[ENGINE] No hay suministro activo")
+        #     elif opcion == "2":
+        #         if cp_state["suministro_activo"]:
+        #             print("[ENGINE] Deteniendo suministro...")
+        #             stop_suministro.set()
+        #             cp_state["suministro_activo"] = False
+        #         else:
+        #             print("[ENGINE] No hay suministro activo")
 
-            elif opcion == "0":
-                print("[ENGINE] Cerrando menú...")
-                break
+        #     elif opcion == "0":
+        #         print("[ENGINE] Cerrando menú...")
+        #         break
 
-        except KeyboardInterrupt:
-            print("\n[ENGINE] Interrumpido")
-            break
-        except Exception as e:
-            print(f"[ENGINE] Error: {e}")
+        # except KeyboardInterrupt:
+        #     print("\n[ENGINE] Interrumpido")
+        #     break
+        # except Exception as e:
+        #     print(f"[ENGINE] Error: {e}")
 
 def iniciar_suministro(conductor_id):
     global cp_state, suministro_thread, stop_suministro
