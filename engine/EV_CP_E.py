@@ -83,7 +83,7 @@ def handle_client(conn, addr):
     print(f"Kafka Broker: {kafka_broker}\n")
 
 
-
+    iniciar_kafka_producer()
     kafka_thread = threading.Thread(
         target=kafka_consumer_thread, 
         args=(kafka_broker, cp_id),
