@@ -361,8 +361,15 @@ def finalizar_suministro(duracion):
     print(f"[ENGINE] Duración: {duracion:.0f} segundos\n")
     
 
+    cp_state["suministro_activo"] = False
+    cp_state["conductor_id"] = None
+    cp_state["status"] = "ACTIVADO"
+    cp_state["consumo_kw"] = 0.0
+    cp_state["importe_euro"] = 0.0
+
     send_to_kafka('cp-estado', {
         "type": "suministro_finalizado",
+        "status":  cp_state["status"],
         "cp_id": cp_state["cp_id"],
         "conductor_id": cp_state["conductor_id"],
         "consumo_total": round(cp_state["consumo_kw"], 2),
@@ -371,12 +378,6 @@ def finalizar_suministro(duracion):
         "timestamp": time.time()
     })
     
-
-    cp_state["suministro_activo"] = False
-    cp_state["conductor_id"] = None
-    cp_state["status"] = "ACTIVADO"
-    cp_state["consumo_kw"] = 0.0
-    cp_state["importe_euro"] = 0.0
 
 def kafka_consumer_thread(kafka_broker, cp_id):
 
