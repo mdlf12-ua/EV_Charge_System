@@ -59,7 +59,7 @@ def iniciar_kafka_consumer(kafka_broker, driver_id):
         kafka_consumer = KafkaConsumer(
             f'notificaciones-{driver_id}', #Topics que consume
             f'datos-consumo-{driver_id}',
-            'cp-estado',
+            #'cp-estado',
             bootstrap_servers=[kafka_broker],
             group_id=f'driver-{driver_id}',
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
@@ -218,7 +218,7 @@ def handle_kafka_message(message):
         print(f"  Type: {msg_type}")
         print(f"  Data completa: {data}")
         print(f"  Driver ID en data: {data.get('driver_id')}")
-        
+
         if topic==f"notificaciones-{driver_id}":
             
             if msg_type=="autorizacion_concedida":

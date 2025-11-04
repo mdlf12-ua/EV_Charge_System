@@ -479,7 +479,7 @@ def enviar_datos_consumo(driver_id, cp_id, consumo_kw, importe_euro):
         return False
             
 
-def mandar_ticket(driver_id, cp_id, consumo_total, importe_total, duracion):
+def mandar_ticket( cp_id, driver_id, consumo_total, importe_total, duracion):
 
     print(f"\n[CENTRAL] Generando ticket final para {driver_id}")
 
