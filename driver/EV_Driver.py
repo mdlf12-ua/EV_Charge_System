@@ -213,11 +213,17 @@ def handle_kafka_message(message):
         data=message.value
         msg_type=data.get("type")
 
+        print(f"\n[DEBUG DRIVER] Mensaje recibido:")
+        print(f"  Topic: {topic}")
+        print(f"  Type: {msg_type}")
+        print(f"  Data completa: {data}")
+        print(f"  Driver ID en data: {data.get('driver_id')}")
+        
         if topic==f"notificaciones-{driver_id}":
             
             if msg_type=="autorizacion_concedida":
                 print(f"\n[DRIVER] Suministro concedido en CP {data.get('cp_id')}")
-                    
+
 
                 driver_state["current_cp"] = data.get("cp_id")
 
@@ -235,6 +241,7 @@ def handle_kafka_message(message):
                 print(f"    CP: {data.get('cp_id')}")
                 print(f"    Consumo total: {data.get('consumo_kw')} kW")
                 print(f"    Importe total: {data.get('importe_euro')} €")
+                print(f"    Duración: {data.get('duracion')}")
                 print(f"    -----------------------------------------------------\n")
                 driver_state["suministro_activo"] = False
                 driver_state["current_cp"] = None
