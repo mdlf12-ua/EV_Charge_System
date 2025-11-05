@@ -2,12 +2,8 @@ import socket
 import threading
 import time
 import sys
-from kafka import KafkaConsumer 
 import json
-from kafka import KafkaProducer
-#Tipo mensajes kafka: cp-estado
-#                     cp-ordenes
-#
+from kafka import KafkaProducer, KafkaConsumer
 
 PORT = 6000
 SERVER = "0.0.0.0"
@@ -25,20 +21,20 @@ KWH=10.0
 kafka_producer = None
 kafka_consumer = None
 kafka_broker = None
-suministro_thread = None
 stop_suministro = threading.Event()
 
 cp_state = {
-    "status": "DESCONECTADO",  
+    "status": "DESCONECTADO",
     "cp_id": None,
     "ubicacion": None,
-    "precio_kwh": None,  
-    "health_status": "OK",  
+    "precio_kwh": None,
+    "health_status": "OK",
     "suministro_activo": False,
     "conductor_id": None,
     "consumo_kw": 0.0,
     "importe_euro": 0.0,
 }
+
 
 def send_msg(conn, msg):
     message = msg.encode(FORMAT)
@@ -152,17 +148,14 @@ def iniciar_kafka_producer(broker):
     global kafka_producer
 
     try:
-
         kafka_producer = KafkaProducer(
-            bootstrap_servers=[broker],
-            value_serializer=lambda v: json.dumps(v).encode('utf-8') #Formato JSON
+            bootstrap_servers=[kafka_broker],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
-
-        print(f"[ENGINE] Productor Kafka conectado a {broker}")
-
+        print(f"[ENGINE] Productor Kafka conectado a {kafka_broker}")
     except Exception as e:
-
         print(f"[ENGINE] Error conectando productor Kafka: {e}")
+        return
 
 def send_to_kafka(asunto, message):
 
