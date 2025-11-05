@@ -4,38 +4,29 @@ import time
 import sys
 import json
 from kafka import KafkaProducer, KafkaConsumer
-import logging
 import os
+import logging
 
 # === CONFIGURACIÓN DE LOGS ===
 os.makedirs("logs", exist_ok=True)
 
-# Crea un logger específico para tu app
-logger = logging.getLogger("engine_app")
-logger.setLevel(logging.INFO)  # puedes usar DEBUG si quieres más detalle
+engine_name = os.getenv("ENGINE_NAME", "engine_default")
 
-# Evita que herede los logs de librerías externas
+logger = logging.getLogger(engine_name)
+logger.setLevel(logging.INFO)
 logger.propagate = False
 
-# Formato del log
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
 
-# Handler para archivo
-file_handler = logging.FileHandler("logs/engine.log", mode='a', encoding='utf-8')
+# Cada engine escribe en su propio archivo dentro de logs/
+log_path = f"logs/{engine_name}.log"
+file_handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-# Handler para consola (opcional)
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-# Desactivar logs ruidosos de librerías externas (Kafka, etc.)
+# Silenciar librerías ruidosas
 logging.getLogger("kafka").setLevel(logging.WARNING)
-logging.getLogger("kafka.conn").setLevel(logging.WARNING)
-logging.getLogger("kafka.client").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
 PORT = 6000
