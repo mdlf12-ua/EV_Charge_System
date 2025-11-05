@@ -11,6 +11,9 @@ services:
       - "6000:6000"
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine1
+    volumes:
+      - ./logs:/app/logs
 
   engine2:
     tty: true
@@ -23,6 +26,9 @@ services:
       - "6001:6000"
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine2
+    volumes:
+      - ./logs:/app/logs
 
   engine3:
     tty: true
@@ -35,6 +41,9 @@ services:
       - "6002:6000"
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine3
+    volumes:
+      - ./logs:/app/logs
 
   # ======== MONITORES ========
   monitor1:
