@@ -41,7 +41,7 @@ class EngineConnector():
         while True:
             try:
                 socket_temp = self.connect_engine_once()
-                print("Socket Conectado")
+                print("[MONITOR] Socket Engine Conectado")
                 with self.lock:
                     self.socket = socket_temp
                 self.connected.set()
@@ -93,7 +93,7 @@ class CentralConnector():
         while True:
             try:
                 socket_temp = self.connect_central_once()
-                print("Socket Central Conectado")
+                print("[MONITOR] Socket Central Conectado")
                 with self.lock:
                     self.socket = socket_temp
                 self.connected.set()
@@ -132,21 +132,16 @@ def receive_msg(socket):
 def noti_averia(central_socket, motivo, timeout=5):
     if not central_socket.connected.wait(timeout):
         return False
-    print("Me quedo")
     with central_socket.lock:
         s = central_socket.socket
-    print("Ya no me quedo!!")
     if s is None:
         return False
     try:
         msg= f"CP_AVERIA:{monitor_state['cp_id']}:{motivo}"
         send_msg(s, msg)
-        print("Le envio la averia")
-        #response = receive_msg(s)
         return True
     
     except Exception as e:
-        print("Entre en la excepcion de notiaveria")
         with central_socket.lock:
             if s is central_socket.socket:
                 try: s.close()
@@ -165,7 +160,6 @@ def noti_recuperacion(central_socket, motivo, timeout=5):
     try:
         msg= f"CP_RECUPERACION:{monitor_state['cp_id']}:{motivo}"
         send_msg(s, msg)
-        #response = receive_msg(s)
         return True
     
     except Exception as e:
@@ -178,7 +172,6 @@ def noti_recuperacion(central_socket, motivo, timeout=5):
         return False
 
 def marcar_engine_caido(engine_socket, s=None):
-    print("Se cayo!!!")
     with engine_socket.lock:
         if s is None or s == engine_socket.socket:
             try:
@@ -188,14 +181,12 @@ def marcar_engine_caido(engine_socket, s=None):
                 pass
             engine_socket.socket = None
             engine_socket.connected.clear()
-            print("Se elimino!!!")
 def set_averia(monitor_state, central_socket, nuevo_estado, motivo_ok=None, motivo_ko=None):
     estaba_averiado = monitor_state["averiado"]
     conocido = monitor_state["conocido"]
 
     if nuevo_estado and not estaba_averiado:
         if motivo_ko:
-            print("Entre")
             if noti_averia(central_socket, motivo_ko):
                 print("[MONITOR]: Averia notificada a central")
             else:
@@ -220,7 +211,6 @@ def healthstatus_periodico(engine_socket, central_socket):
     print("\n[MONITOR] Empezando healthchecks periodicos\n")
 
     while True:
-        print("ESTOY!!1 ESTOY!!! Y ESTOY!!!")
         if not engine_socket.connected.wait(2):
             continue
         with engine_socket.lock:
@@ -229,35 +219,35 @@ def healthstatus_periodico(engine_socket, central_socket):
             continue
         try:
             send_msg(s, "HEALTHSTATUS")
-            print("Mensaje mandado a engine")
+            #print("Mensaje mandado a engine")
             respuesta=receive_msg(s)
-            print("Health")
+            #print("Health")
             if respuesta is None:
-                print("Sin respuesta")                
+                #print("Sin respuesta")                
                 marcar_engine_caido(engine_socket, s=s)
                 set_averia(monitor_state, central_socket, True, motivo_ko="Engine no responde")
                 time.sleep(HEALTHSTATUS_TIEMPO)
 
             elif respuesta == "KO":
-                print("KO")   
+                #print("KO")   
                 set_averia(monitor_state, central_socket, True, motivo_ko="Engine está KO")
                 time.sleep(HEALTHSTATUS_TIEMPO)
 
             elif respuesta == "OK":
-                print("OK")
+                #print("OK")
                 set_averia(monitor_state, central_socket, False, motivo_ok="Engine está OK")
                 monitor_state["conocido"] = True
                 time.sleep(HEALTHSTATUS_TIEMPO)
 
         except ConnectionResetError:
-            print("Excepcion Connection")
+            #print("Excepcion Connection")
             marcar_engine_caido(engine_socket, s=s)
             set_averia(monitor_state, central_socket, True, motivo_ko="Conexión con Engine perdida")
             # no hagas break; deja que el bucle espere a reconexión
             time.sleep(HEALTHSTATUS_TIEMPO)
 
         except Exception as e:
-            print("Excepcion")
+            #print("Excepcion")
             marcar_engine_caido(engine_socket, s=s)
             # aquí no hace falta re-notificar si ya estabas en KO; set_averia se encarga
             set_averia(monitor_state, central_socket, True, motivo_ko="Error en healthcheck")
