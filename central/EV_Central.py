@@ -37,6 +37,9 @@ log = logging.getLogger("central")
 # Topics Kafka:
 # CONSUMIDOR: solicitud-recarga (del Driver)
 # # CONSUMIDOR: solicitud-cps (del Driver)
+#CONSUMIDOR: cp-register (del Engine)
+#CONSUMIDOR: cp-estado (del Engine)
+#CONSUMIDOR: cp-telemetria (del Engine)
 # PRODUCTOR: notificaciones-{driver_id} (al Driver)
 # PRODUCTOR: datos-consumo-{driver_id} (telemetría al Driver)
 # PRODUCTOR: cp-ordenes (al Engine)               
@@ -100,6 +103,7 @@ def search_CP():
     log.info(f"[CENTRAL] Cargados {len(central_cps)} CPs desde la BD.")
 
 
+#Función que utilizara cada hilo para antender a un cliente
 #Función que utilizara cada hilo para antender a un cliente
 def handle_CP(conn, addr):
     log.info(f"[NUEVA CONEXION] {addr} connected.")
@@ -315,6 +319,8 @@ def validar_cp_driver(cp_id):
             return False, "CP reservado"
         if estado=="ACTIVADO":
             return True, "CP disponible y sin problemas"
+        if estado=="OK":
+            return True, "CP disponible y sin problemas"
         
         return False, f"Estado desconocido: {estado}"
 
@@ -361,8 +367,9 @@ def solicitud_recarga(driver_id, cp_id):
                 "cp_id":cp_id,
                 "message": "Suministro autorizado. Puede enchufarse al CP"
             })
-
-            #Enviar orden al engine
+            send_autorizacion_engine(cp_id, driver_id)
+            
+            
 
     else:
         log.warning(f"[CENTRAL] CP {cp_id} NO disponible: {razon}")
@@ -373,6 +380,29 @@ def solicitud_recarga(driver_id, cp_id):
         })
 
 
+def send_autorizacion_engine(cp_id, driver_id):
+    if not kafka_producer:
+        print("[CENTRAL] Productor Kafka no inicializado")
+        return False
+    
+    try:
+        message = {
+            "type": "autorizado",
+            "cp_id": cp_id,
+            "conductor_id": driver_id,
+            "timestamp": time.time()
+        }
+        
+        kafka_producer.send('autorizacion-suministro', value=message)
+        kafka_producer.flush()
+        
+        print(f"[CENTRAL] Autorización enviada a Engine {cp_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[CENTRAL] Error enviando autorización: {e}")
+        return False
+
 def kafka_consumer_thread():
      
      log.info("[CENTRAL] A la escucha de solicitudes de Drivers\n")
@@ -381,15 +411,16 @@ def kafka_consumer_thread():
         try:
             for message in kafka_consumer:
                 data=message.value
+                topic = message.topic 
                 msg_type=data.get("type")
 
-                if msg_type == "solicitud-recarga":
+                if topic == "solicitud-recarga":
                     driver_id=data.get("driver_id")
                     cp_id=data.get("cp_id")
                     solicitud_recarga(driver_id, cp_id)
 
 
-                elif msg_type == "solicitud-cps":
+                elif topic == "solicitud-cps":
                     driver_id = data.get("driver_id")
                     if driver_id:
                         enviar_lista_cps(driver_id)
@@ -397,10 +428,67 @@ def kafka_consumer_thread():
                     else:
                         log.warning("[CENTRAL] solicitud-lista-cps sin driver_id valida")
 
+                elif topic=='cp-register':
+                    cp_id=data.get("cp_id")
+                    ubicacion=data.get("ubicacion")
+                    precio_kwh = data.get("precio_kwh")
+                    status = data.get("status")
+                    print(f"\n[CENTRAL] Nuevo CP registrado:")
+                    print(f"            ID: {cp_id}")
+                    print(f"            Ubicación: {ubicacion}")
+                    print(f"            Precio: {precio_kwh} €/kWh")
+                    print(f"            Estado: {status}\n")
+                
+                    with lock:
+                        central_cps[cp_id] = {
+                            "ID": cp_id,
+                            "Ubicacion": ubicacion,
+                            "PRECIO": precio_kwh,
+                            "ESTADO": status,
+                            "CONDUCTOR_ID": None,
+                            "CONSUMO_KW": 0.0,
+                            "IMPORTE_EU": 0.0
+                        }
+
+                elif topic=="cp-estado":
+                    cp_id=data.get("cp_id")
+
+                    if msg_type=="suministro_finalizado":
+                        conductor_id = data.get("conductor_id")
+                        consumo_kw = data.get("consumo_total")
+                        importe_euro = data.get("importe_total")
+                        duracion = data.get("duracion")
+                        mandar_ticket(cp_id, conductor_id, consumo_kw, importe_euro, duracion)
+
+                    print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
+                    with lock:
+                            if cp_id in central_cps:
+                                status = data.get("status")
+                                central_cps[cp_id]["ESTADO"] = status
+
+                elif topic=="cp-telemetria":
+                    cp_id = data.get("cp_id")
+                    conductor_id = data.get("conductor_id")
+                    consumo_kw = data.get("consumo_kw")
+                    importe_euro = data.get("importe_euro")
+
+                    with lock:
+                        if cp_id in central_cps:
+                            central_cps[cp_id]["CONSUMO_KW"] = consumo_kw
+                            central_cps[cp_id]["IMPORTE_EU"] = importe_euro
+                        
+                        enviar_datos_consumo(conductor_id, cp_id, consumo_kw, importe_euro)
+
+                else:
+                    print(f"[CENTRAL] Topic no reconocido: {topic}")
+
 
         except Exception as e:
             log.error(f"[CENTRAL] Error en consumer thread: {e}")
             time.sleep(1)
+
+
+
 
 def enviar_datos_consumo(driver_id, cp_id, consumo_kw, importe_euro):
 
@@ -426,7 +514,7 @@ def enviar_datos_consumo(driver_id, cp_id, consumo_kw, importe_euro):
         return False
             
 
-def mandar_ticket(driver_id, cp_id, consumo_total, importe_total, duracion):
+def mandar_ticket( cp_id, driver_id, consumo_total, importe_total, duracion):
 
     log.info(f"\n[CENTRAL] Generando ticket final para {driver_id}")
 
@@ -496,12 +584,144 @@ def send_order_all_cps(order_type):
 
     log.info(f"[CENTRAL] Orden mandada con éxito a {exitos}/{len(cp_ids)} CPs\n")
 
+def show_cp_status():
+    """
+    Muestra el estado actual de todos los CPs registrados en la central.
+    Inspirado en el "MONITORIZATION PANEL" del PDF [cite: 75-100].
+    """
+    print("\n---  MONITORIZACIÓN DE CHARGING POINTS ---")
+    
+    # Usamos el lock para asegurar una lectura segura del diccionario
+    with lock:
+        if not central_cps:
+            print(" [CENTRAL] No hay Charging Points registrados o conectados.")
+            print("---------------------------------------------")
+            return
+
+        # Ordenamos por ID para una visualización consistente
+        sorted_cp_ids = sorted(central_cps.keys())
+        
+        for cp_id in sorted_cp_ids:
+            cp = central_cps[cp_id]
+            
+            # Obtenemos valores con 'get' para evitar errores si una clave falta
+            estado = cp.get("ESTADO", "DESCONOCIDO")
+            ubicacion = cp.get("Ubicacion", "N/A")
+            precio = cp.get("PRECIO", 0.0)
+            
+            print(f"\n [CP ID]: {cp_id} ({ubicacion})")
+            print(f"   Precio: {precio} €/kWh")
+            
+            # Damos formato al estado según el PDF
+            if estado == "ACTIVADO":
+                print(f"   Estado: {estado} (VERDE - Disponible)")
+            elif estado == "SUMINISTRANDO":
+                conductor = cp.get("CONDUCTOR_ID", "N/A")
+                consumo = cp.get("CONSUMO_KW", 0.0)
+                importe = cp.get("IMPORTE_EU", 0.0)
+                print(f"   Estado: {estado} (VERDE - Ocupado)")
+                print(f"     > Conductor: {conductor}")
+                print(f"     > Consumo: {consumo:.2f} kWh")
+                print(f"     > Importe: {importe:.2f} €")
+            elif estado == "PARADO":
+                print(f"   Estado: {estado} (NARANJA - Out of Order)") # [cite: 84, 85]
+            elif estado == "AVERIADO":
+                print(f"   Estado: {estado} (ROJO - Averiado)") # [cite: 98, 99]
+            elif estado == "DESCONECTADO":
+                print(f"   Estado: {estado} (GRIS - Desconectado)") # [cite: 100, 168]
+            else:
+                 print(f"   Estado: {estado} (Desconocido)")
+
+    print("\n---------------------------------------------")
+
+
+def menu_send_order_one():
+    """
+    Menú para enviar una orden (STOP/CONTINUE) a un CP específico.
+    """
+    cp_id = input("  Introduce el ID del CP: ").strip()
+    
+    # Verificamos que el CP existe antes de enviar la orden
+    with lock:
+        if cp_id not in central_cps:
+            print(f"  [ERROR] CP ID '{cp_id}' no encontrado.")
+            return
+
+    print(f"  ¿Qué orden quieres enviar a {cp_id}?")
+    print("    1. Parar (Poner Fuera de Servicio)")
+    print("    2. Reanudar (Poner en Activado)")
+    orden = input("  Elige (1-2): ").strip()
+
+    if orden == "1":
+        print(f"  Enviando STOP a {cp_id}...")
+        # Esta es tu función existente
+        send_order_cp(cp_id, "STOP")
+    elif orden == "2":
+        print(f"  Enviando CONTINUE a {cp_id}...")
+        # Esta es tu función existente
+        send_order_cp(cp_id, "CONTINUE")
+    else:
+        print("  Opción no válida.")
+
+
+def menu_send_order_all():
+    """
+    Menú para enviar una orden (STOP/CONTINUE) a TODOS los CPs.
+    """
+    print(f"  ¿Qué orden quieres enviar a TODOS los CPs?")
+    print("    1. Parar (Poner Fuera de Servicio)")
+    print("    2. Reanudar (Poner en Activado)")
+    orden = input("  Elige (1-2): ").strip()
+
+    if orden == "1":
+        print(f"  Enviando STOP a TODOS los CPs...")
+        # Esta es tu función existente
+        send_order_all_cps("STOP")
+    elif orden == "2":
+        print(f"  Enviando CONTINUE a TODOS los CPs...")
+        # Esta es tu función existente
+        send_order_all_cps("CONTINUE")
+    else:
+        print("  Opción no válida.")
+
+
+def central_menu():
+    """
+    Bucle principal del menú interactivo de la Central.
+    """
+    while True:
+        print("\n=====================================")
+        print(" 🏛️  PANEL DE CONTROL EV_CENTRAL 🏛️")
+        print("=====================================")
+        print(" 1. Mostrar estado de todos los CPs")
+        print(" 2. Enviar orden (Parar/Reanudar) a un CP")
+        print(" 3. Enviar orden (Parar/Reanudar) a TODOS los CPs")
+        print(" 0. Salir (Apagar Central)")
+        print("=====================================")
+        
+        opcion = input(" Selecciona una opción: ").strip()
+
+        if opcion == "1":
+            show_cp_status()
+        elif opcion == "2":
+            menu_send_order_one()
+        elif opcion == "3":
+            menu_send_order_all()
+        elif opcion == "0":
+            print("[CENTRAL] Opción 0 seleccionada. Saliendo...")
+            break # Rompe el bucle del menú para apagar
+        else:
+            print(f"[ERROR] Opción '{opcion}' no válida. Inténtalo de nuevo.")
+
+
+
 ######################### MAIN ##########################
+
 
 if len(sys.argv) != 4:
     log.warning("Uso correcto: python3 EV_central.py [Puerto de Escucha] [Kafka IP] [Kafka Puerto] [Kafka Broker]")
     sys.exit(1)
-
+    
 PORT = int(sys.argv[1])
 kafka_ip = sys.argv[2]
 kafka_port = int(sys.argv[3])
@@ -540,8 +760,8 @@ if kafka_consumer:
 
 
 try:
-    while True:
-        time.sleep(1)
+    central_menu()
+
 except KeyboardInterrupt:
     log.info("\n[CENTRAL] Cerrando sistema")
 finally:

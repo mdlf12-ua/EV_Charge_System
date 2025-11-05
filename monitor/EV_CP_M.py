@@ -208,7 +208,6 @@ def healthstatus_periodico(engine_socket, central_socket):
     print("\n[MONITOR] Empezando healthchecks periodicos\n")
 
     while True:
-
         if not engine_socket.connected.wait(2):
             continue
         with engine_socket.lock:

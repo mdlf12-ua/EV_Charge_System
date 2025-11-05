@@ -10,4 +10,7 @@ COPY EV_CP_M.py .
 
 # Por ahora dejamos los argumentos fijos
 CMD ["sh", "-c", "python -u EV_CP_M.py $ENGINE_IP $ENGINE_PORT $CENTRAL_IP $CENTRAL_PORT $CP_ID"]
+<<<<<<< HEAD
 
+=======
+>>>>>>> Marcos
