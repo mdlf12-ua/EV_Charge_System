@@ -398,6 +398,8 @@ def kafka_consumer_thread():
                     ubicacion=data.get("ubicacion")
                     precio_kwh = data.get("precio_kwh")
                     status = data.get("status")
+                    consumo_kw=data.get("consumo_kw")
+                    importe_eu=data.get("importe_euro")
                     print(f"\n[CENTRAL] Nuevo CP registrado:")
                     print(f"            ID: {cp_id}")
                     print(f"            Ubicación: {ubicacion}")
@@ -411,8 +413,8 @@ def kafka_consumer_thread():
                             "PRECIO": precio_kwh,
                             "ESTADO": status,
                             "CONDUCTOR_ID": None,
-                            "CONSUMO_KW": 0.0,
-                            "IMPORTE_EU": 0.0
+                            "CONSUMO_KW": consumo_kw,
+                            "IMPORTE_EU": importe_eu
                         }
 
                 elif topic=="cp-estado":

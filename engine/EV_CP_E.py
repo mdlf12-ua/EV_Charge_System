@@ -16,6 +16,11 @@ FORMAT = 'utf-8'
 HEADER = 64
 MAX_CONEXIONES = 20
 TIMEOUT = 5000 #In miliseconds
+UBICACION="BARCELONA"
+PRECIO=0.5
+CONSUMO=0.0
+KWH=10.0
+
 
 kafka_producer = None
 kafka_consumer = None
@@ -68,6 +73,9 @@ def handle_client(conn, addr):
     cp_id = msg.split(":", 1)[1].strip()
     cp_state["cp_id"] = cp_id
     cp_state["status"] = "ACTIVADO"
+    cp_state["consumo_kw"]=KWH
+    cp_state["precio_kwh"]=PRECIO
+    cp_state["importe_euro"]=0.0
     print(f"[ENGINE] Registrado CP_ID = {cp_id}")
 
     send_msg(conn, "OK")
@@ -96,8 +104,9 @@ def handle_client(conn, addr):
         "cp_id": cp_id,
         "status": "ACTIVADO",
         "timestamp": time.time(),
-        "ubicacion": "X",
-        "precio_kwh": 0.30
+        "ubicacion": UBICACION,
+        "consumo_kw": cp_state["consumo_kw"],
+        "importe_euro":cp_state["importe_euro"]
     })
 
     # Ahora podemos iniciar Kafka
@@ -334,8 +343,7 @@ def thread_suministro():
 
     while cp_state["suministro_activo"] and not stop_suministro.is_set():
 
-        cp_state["consumo_kw"] += 0.5
-        cp_state["importe_euro"] += 1
+        cp_state["importe_euro"] = cp_state["importe_euro"]+ (cp_state["consumo_kw"]*(KWH/3600))
         
 
         send_to_kafka('cp-telemetria', {
