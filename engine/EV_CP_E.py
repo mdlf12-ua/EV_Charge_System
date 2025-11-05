@@ -196,21 +196,19 @@ def handle_kafka_message(message):
                     print("[ENGINE] Deteniendo suministro activo...")
                     cp_state["suministro_activo"] = False
                     stop_suministro.set()
+                    
 
-                    if cp_state["status"]=="SUMINISTRANDO":
-                        stop_suministro.set()
-
-                    cp_state["status"] = "PARADO"
-                    print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
-                    print("[ENGINE] CP fuera de servicio (OoO)\n")
+                cp_state["status"] = "PARADO"
+                print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
+                print("[ENGINE] CP fuera de servicio (OoO)\n")
 
                     #Notificar a Central
-                    send_to_kafka('cp-estado', {
+                send_to_kafka('cp-estado', {
                     "cp_id": cp_state["cp_id"],
                     "status": "PARADO",
                     "timestamp": time.time(),
                     "reason": "orden_central"
-                    })
+                })
 
  
 

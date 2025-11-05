@@ -390,7 +390,7 @@ def send_autorizacion_engine(cp_id, driver_id):
     
     try:
         message = {
-            "type": "autorizado",
+            "type": "AUTORIZADO",
             "cp_id": cp_id,
             "conductor_id": driver_id,
             "timestamp": time.time()
