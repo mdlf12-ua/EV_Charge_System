@@ -1,5 +1,7 @@
 services:
   engine:
+    tty: true
+    stdin_open: true
     build:
       context: ../engine
       dockerfile: Dockerfile
