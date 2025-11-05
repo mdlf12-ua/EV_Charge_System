@@ -131,17 +131,21 @@ def receive_msg(socket):
 def noti_averia(central_socket, motivo, timeout=5):
     if not central_socket.connected.wait(timeout):
         return False
+    print("Me quedo")
     with central_socket.lock:
         s = central_socket.socket
+    print("Ya no me quedo!!")
     if s is None:
         return False
     try:
         msg= f"CP_AVERIA:{monitor_state['cp_id']}:{motivo}"
         send_msg(s, msg)
-        response = receive_msg(s)
+        print("Le envio la averia")
+        #response = receive_msg(s)
         return True
     
     except Exception as e:
+        print("Entre en la excepcion de notiaveria")
         with central_socket.lock:
             if s is central_socket.socket:
                 try: s.close()
@@ -160,7 +164,7 @@ def noti_recuperacion(central_socket, motivo, timeout=5):
     try:
         msg= f"CP_RECUPERACION:{monitor_state['cp_id']}:{motivo}"
         send_msg(s, msg)
-        response = receive_msg(s)
+        #response = receive_msg(s)
         return True
     
     except Exception as e:
@@ -180,7 +184,7 @@ def marcar_engine_caido(engine_socket, s=None):
                 if engine_socket.socket:
                     engine_socket.socket.close()
             except Exception:
-                passc
+                pass
             engine_socket.socket = None
             engine_socket.connected.clear()
             print("Se elimino!!!")
@@ -208,6 +212,7 @@ def healthstatus_periodico(engine_socket, central_socket):
     print("\n[MONITOR] Empezando healthchecks periodicos\n")
 
     while True:
+        print("ESTOY!!1 ESTOY!!! Y ESTOY!!!")
         if not engine_socket.connected.wait(2):
             continue
         with engine_socket.lock:
