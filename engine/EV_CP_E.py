@@ -197,6 +197,9 @@ def handle_kafka_message(message):
                     cp_state["suministro_activo"] = False
                     stop_suministro.set()
 
+                    if cp_state["status"]=="SUMINISTRANDO":
+                        stop_suministro.set()
+
                     cp_state["status"] = "PARADO"
                     print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
                     print("[ENGINE] CP fuera de servicio (OoO)\n")
@@ -209,8 +212,7 @@ def handle_kafka_message(message):
                     "reason": "orden_central"
                     })
 
-                    if cp_state["status"]=="SUMINISTRANDO":
-                        stop_suministro.set()
+ 
 
 
             elif message_type=="CONTINUE":

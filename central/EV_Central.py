@@ -465,11 +465,12 @@ def kafka_consumer_thread():
                         duracion = data.get("duracion")
                         mandar_ticket(cp_id, conductor_id, consumo_kw, importe_euro, duracion)
 
-                    print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
                     with lock:
                             if cp_id in central_cps:
                                 status = data.get("status")
                                 central_cps[cp_id]["ESTADO"] = status
+                    print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
+
 
                 elif topic=="cp-telemetria":
                     cp_id = data.get("cp_id")
