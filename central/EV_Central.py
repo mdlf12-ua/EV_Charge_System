@@ -248,7 +248,10 @@ def inicia_kafka_consumer(kafka_broker,max_retries=10, delay=5):
         try:
             kafka_consumer = KafkaConsumer(
                 'solicitud-recarga',
-                'solicitud-cps',  # Topic donde los Drivers envían solicitudes
+                'solicitud-cps',
+                'cp-register',
+                'cp-telemetria',
+                'cp-estado',  # Topic donde los Drivers envían solicitudes
                 bootstrap_servers=[kafka_broker],
                 group_id='central-group',
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')), #FFormato JSON
