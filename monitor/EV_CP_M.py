@@ -11,7 +11,8 @@ HEALTHSTATUS_TIEMPO = 1 #(segundos)
 monitor_state = {
     "cp_id": None,
     "ubicacion": "Barcelona",
-    "averiado": False
+    "averiado": False,
+    "conocido": False
 }
 class EngineConnector():
     def __init__(self,ip,port,cp_id):
@@ -190,6 +191,7 @@ def marcar_engine_caido(engine_socket, s=None):
             print("Se elimino!!!")
 def set_averia(monitor_state, central_socket, nuevo_estado, motivo_ok=None, motivo_ko=None):
     estaba_averiado = monitor_state["averiado"]
+    conocido = monitor_state["conocido"]
 
     if nuevo_estado and not estaba_averiado:
         if motivo_ko:
@@ -205,6 +207,12 @@ def set_averia(monitor_state, central_socket, nuevo_estado, motivo_ok=None, moti
                 print("[MONITOR]: Recuperación notificada a central")
             else:
                 print("[MONITOR]: No se pudo conectar a central")
+        monitor_state["averiado"] = False
+    elif not conocido:
+        if noti_recuperacion(central_socket, motivo_ok):
+            print("[MONITOR]: Recuperación notificada a central")
+        else:
+            print("[MONITOR]: No se pudo conectar a central")
         monitor_state["averiado"] = False
 
 def healthstatus_periodico(engine_socket, central_socket):
@@ -238,6 +246,7 @@ def healthstatus_periodico(engine_socket, central_socket):
             elif respuesta == "OK":
                 print("OK")
                 set_averia(monitor_state, central_socket, False, motivo_ok="Engine está OK")
+                monitor_state["conocido"] = True
                 time.sleep(HEALTHSTATUS_TIEMPO)
 
         except ConnectionResetError:
