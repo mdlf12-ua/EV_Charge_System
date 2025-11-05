@@ -13,9 +13,9 @@ HEADER = 64
 MAX_CONEXIONES = 20
 TIMEOUT = 5000 #In miliseconds
 UBICACION="BARCELONA"
-PRECIO=0.5
+PRECIO=1
 CONSUMO=0.0
-KWH=10.0
+KWH=3600.0
 
 
 kafka_producer = None
@@ -69,7 +69,7 @@ def handle_client(conn, addr):
     cp_id = msg.split(":", 1)[1].strip()
     cp_state["cp_id"] = cp_id
     cp_state["status"] = "ACTIVADO"
-    cp_state["consumo_kw"]=KWH
+    cp_state["consumo_kw"]=0.0
     cp_state["precio_kwh"]=PRECIO
     cp_state["importe_euro"]=0.0
     print(f"[ENGINE] Registrado CP_ID = {cp_id}")
@@ -336,7 +336,8 @@ def thread_suministro():
 
     while cp_state["suministro_activo"] and not stop_suministro.is_set():
 
-        cp_state["importe_euro"] = cp_state["importe_euro"]+ (cp_state["consumo_kw"]*(KWH/3600))
+        cp_state["consumo_kw"] += KWH/3600
+        cp_state["importe_euro"] = cp_state["consumo_kw"] + cp_state["precio_kwh"]
         
 
         send_to_kafka('cp-telemetria', {
@@ -359,7 +360,7 @@ def thread_suministro():
 def finalizar_suministro(duracion):
     global cp_state
 
-    print(f"\n\n[ENGINE] 🏁 FINALIZANDO SUMINISTRO")
+    print(f"\n\n[ENGINE] FINALIZANDO SUMINISTRO")
     print(f"[ENGINE] Consumo total: {cp_state['consumo_kw']:.2f} kWh")
     print(f"[ENGINE] Importe total: {cp_state['importe_euro']:.2f} €")
     print(f"[ENGINE] Duración: {duracion:.0f} segundos\n")

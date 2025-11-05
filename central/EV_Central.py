@@ -696,7 +696,7 @@ def central_menu():
     """
     while True:
         print("\n=====================================")
-        print(" 🏛️  PANEL DE CONTROL EV_CENTRAL 🏛️")
+        print("   PANEL DE CONTROL EV_CENTRAL ")
         print("=====================================")
         print(" 1. Mostrar estado de todos los CPs")
         print(" 2. Enviar orden (Parar/Reanudar) a un CP")
