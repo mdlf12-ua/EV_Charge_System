@@ -9,31 +9,31 @@ import json
 from kafka import KafkaProducer
 from kafka import KafkaConsumer
 import logging, os
+from logging.handlers import RotatingFileHandler
 
-# Carpeta de logs (persistida con un volumen)
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-from logging.handlers import RotatingFileHandler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    handlers=[
-        RotatingFileHandler(
-            os.path.join(LOG_DIR, "central.log"),
-            maxBytes=2_000_000,     # 2 MB por archivo
-            backupCount=5,          # guarda 5 rotaciones
-            encoding="utf-8"
-        )
-        # Ojo: NO añadimos StreamHandler. Así los logs NO van a la consola.
-    ],
-    force=True  # pisa cualquier config previa
-)
-for noisy in ["kafka", "kafka.consumer", "kafka.producer", "kafka.conn", "urllib3"]:
-    logging.getLogger(noisy).setLevel(logging.WARNING)
+logging.basicConfig(level=logging.WARNING, force=True)
+
 
 log = logging.getLogger("central")
+log.setLevel(logging.INFO)
+log.propagate = False
+
+fh = RotatingFileHandler(os.path.join(LOG_DIR, "central.log"),
+                         maxBytes=2_000_000, backupCount=5, encoding="utf-8")
+fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
+fh.setFormatter(fmt)
+log.addHandler(fh)
+
+
+for noisy in [
+    "kafka", "kafka.consumer", "kafka.producer", "kafka.conn",
+    "kafka.coordinator", "kafka.client", "urllib3"
+]:
+    logging.getLogger(noisy).setLevel(logging.ERROR)
 # Topics Kafka:
 # CONSUMIDOR: solicitud-recarga (del Driver)
 # # CONSUMIDOR: solicitud-cps (del Driver)
