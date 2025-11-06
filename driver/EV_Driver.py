@@ -305,7 +305,7 @@ def handle_kafka_message(message):
 
             elif msg_type=="autorizacion_denegada":
                 print(f"\n[DRIVER] Suministro denegado en CP {data.get('cp_id')} por: {data.get('message')}")
-                with lock_driver:  # ✓ AÑADIR ESTO
+                with lock_driver: 
                     driver_state["current_cp"] = None
                     driver_state["suministro_activo"] = False
                 evento_autorizacion.set()
