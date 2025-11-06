@@ -1,27 +1,83 @@
 services:
-  engine:
+  # ======== ENGINES ========
+  engine1:
     tty: true
     stdin_open: true
     build:
       context: ../engine
       dockerfile: Dockerfile
-    container_name: engine
+    container_name: engine1
     ports:
-      - "6000:6000"       # Exponemos el puerto por si quieres probar desde fuera
+      - "6000:6000"
     environment:
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine1
+    volumes:
+      - ./logs:/app/logs
 
-  monitor:
+  engine2:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine2
+    ports:
+      - "6001:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine2
+    volumes:
+      - ./logs:/app/logs
+
+  engine3:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine3
+    ports:
+      - "6002:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine3
+    volumes:
+      - ./logs:/app/logs
+
+  # ======== MONITORES ========
+  monitor1:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: monitor
-    #depends_on:
-      #engine:
-        #condition: service_started
+    container_name: monitor1
     environment:
-      ENGINE_IP: engine
+      ENGINE_IP: engine1
       ENGINE_PORT: 6000
-      CENTRAL_IP: 192.168.1.33
-      CENTRAL_PORT: 5000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
       CP_ID: CP001
+
+  monitor2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor2
+    environment:
+      ENGINE_IP: engine2
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP002
+
+  monitor3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor3
+    environment:
+      ENGINE_IP: engine3
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP003

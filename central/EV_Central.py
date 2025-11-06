@@ -9,31 +9,31 @@ import json
 from kafka import KafkaProducer
 from kafka import KafkaConsumer
 import logging, os
+from logging.handlers import RotatingFileHandler
 
-# Carpeta de logs (persistida con un volumen)
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-from logging.handlers import RotatingFileHandler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    handlers=[
-        RotatingFileHandler(
-            os.path.join(LOG_DIR, "central.log"),
-            maxBytes=2_000_000,     # 2 MB por archivo
-            backupCount=5,          # guarda 5 rotaciones
-            encoding="utf-8"
-        )
-        # Ojo: NO añadimos StreamHandler. Así los logs NO van a la consola.
-    ],
-    force=True  # pisa cualquier config previa
-)
-for noisy in ["kafka", "kafka.consumer", "kafka.producer", "kafka.conn", "urllib3"]:
-    logging.getLogger(noisy).setLevel(logging.WARNING)
+logging.basicConfig(level=logging.WARNING, force=True)
+
 
 log = logging.getLogger("central")
+log.setLevel(logging.INFO)
+log.propagate = False
+
+fh = RotatingFileHandler(os.path.join(LOG_DIR, "central.log"),
+                         maxBytes=2_000_000, backupCount=5, encoding="utf-8")
+fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
+fh.setFormatter(fmt)
+log.addHandler(fh)
+
+
+for noisy in [
+    "kafka", "kafka.consumer", "kafka.producer", "kafka.conn",
+    "kafka.coordinator", "kafka.client", "urllib3"
+]:
+    logging.getLogger(noisy).setLevel(logging.ERROR)
 # Topics Kafka:
 # CONSUMIDOR: solicitud-recarga (del Driver)
 # # CONSUMIDOR: solicitud-cps (del Driver)
@@ -122,6 +122,7 @@ def handle_CP(conn, addr):
             #############################################
             #Aqui iniciaria el protocolo                #
             #############################################
+            #Averia
             if msg.startswith("CP_AVERIA:"):
                 try:
                     _, cp_id, motivo = msg.split(":", 2)
@@ -146,6 +147,28 @@ def handle_CP(conn, addr):
                     central_cps[cp_id] = info
 
                 log.info(f"[CENTRAL] CP {cp_id} en AVERÍA. Motivo: {motivo}")
+                continue
+            #Recuperacion
+            if msg.startswith("CP_RECUPERACION:"):
+                try:
+                    _, cp_id, motivo = msg.split(":", 2)
+                except ValueError:
+                    log.warning(f"[CENTRAL] Formato CP_RECUPERACION inválido: {msg}")
+                    continue
+
+                with lock:
+                    info = central_cps.get(cp_id, {
+                        "ID": cp_id, "Ubicacion": None, "PRECIO": None,
+                        "ESTADO": "Parado", "CONDUCTOR_ID": None,
+                        "CONSUMO_KW": None, "IMPORTE_EU": None
+                    })
+                    # tras recuperación lo dejamos operativo (ajusta al estado que queráis)
+                    info["ESTADO"] = "ACTIVADO"
+                    info["ULTIMA_RECUPERACION"] = motivo
+                    info["TS_ULTIMO_CAMBIO"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    central_cps[cp_id] = info
+
+                log.info(f"[CENTRAL] CP {cp_id} RECUPERADO. Motivo: {motivo}")
                 continue
 
             partes = msg.split()
@@ -201,7 +224,7 @@ def start_socket():
             thread = threading.Thread(target=handle_CP, args=(conn, addr))
             thread.start()
             log.info(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
-            log.info("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+            log.info(f"CONEXIONES RESTANTES PARA CERRAR EL SERVICIO {MAX_CONEXIONES - CONEX_ACTIVAS}")
         else:
             log.warning("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
             conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))

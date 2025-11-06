@@ -4,6 +4,30 @@ import time
 import sys
 import json
 from kafka import KafkaProducer, KafkaConsumer
+import os
+import logging
+
+# === CONFIGURACIÓN DE LOGS ===
+os.makedirs("logs", exist_ok=True)
+
+engine_name = os.getenv("ENGINE_NAME", "engine_default")
+
+logger = logging.getLogger(engine_name)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
+
+# Cada engine escribe en su propio archivo dentro de logs/
+log_path = f"logs/{engine_name}.log"
+file_handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Silenciar librerías ruidosas
+logging.getLogger("kafka").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 PORT = 6000
 SERVER = "0.0.0.0"
@@ -50,14 +74,14 @@ def receive_msg(conn):
         msg = conn.recv(int(msg_length)).decode(FORMAT)
         return msg
     except Exception as e:
-        print(f"[ENGINE] Error al recibir mensaje: {e}")
+        logger.info(f"[ENGINE] Error al recibir mensaje: {e}")
         return None
 
 
 def handle_client(conn, addr):
     global cp_state
 
-    print(f"[ENGINE] Nueva conexión desde {addr}")
+    logger.info(f"[ENGINE] Nueva conexión desde {addr}")
 
     # Esperamos mensaje de registro
     msg = receive_msg(conn)
@@ -72,8 +96,7 @@ def handle_client(conn, addr):
     cp_state["consumo_kw"]=0.0
     cp_state["precio_kwh"]=PRECIO
     cp_state["importe_euro"]=0.0
-    print(f"[ENGINE] Registrado CP_ID = {cp_id}")
-
+    logger.info(f"[ENGINE] Registrado CP_ID = {cp_id}")
     send_msg(conn, "OK")
 
 
@@ -81,10 +104,10 @@ def handle_client(conn, addr):
     cp_state["cp_id"] = cp_id
     cp_state["status"] = "ACTIVADO"
 
-    print(f"[ENGINE] - Punto de Recarga {cp_id}\n")
-    print("----------------------------------------\n")
-    print(f"Socket Monitor: {SERVER}:{PORT}\n")
-    print(f"Kafka Broker: {kafka_broker}\n")
+    logger.info(f"[ENGINE] - Punto de Recarga {cp_id}\n")
+    logger.info("----------------------------------------\n")
+    logger.info(f"Socket Monitor: {SERVER}:{PORT}\n")
+    logger.info(f"Kafka Broker: {kafka_broker}\n")
 
 
     iniciar_kafka_producer(kafka_broker)
@@ -95,7 +118,7 @@ def handle_client(conn, addr):
     )
     kafka_thread.start()
 
-    print(f"[ENGINE] Registrando CP en la central...\n")
+    logger.info(f"[ENGINE] Registrando CP en la central...\n")
     send_to_kafka('cp-register', {
         "cp_id": cp_id,
         "status": "ACTIVADO",
@@ -127,7 +150,7 @@ def handle_client(conn, addr):
         else:
             send_msg(conn, "ERROR: comando desconocido")
 
-    print("[ENGINE] Monitor desconectado")
+    logger.warning("[ENGINE] Monitor desconectado")
     conn.close()
 
 
@@ -137,7 +160,7 @@ def start_socket_monitor():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(ADDR)
     server.listen()
-    print(f"[ENGINE] Escuchando en {SERVER}:{PORT}")
+    logger.info(f"[ENGINE] Escuchando en {SERVER}:{PORT}")
 
     while True:
         conn, addr = server.accept()
@@ -152,9 +175,9 @@ def iniciar_kafka_producer(broker):
             bootstrap_servers=[kafka_broker],
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
-        print(f"[ENGINE] Productor Kafka conectado a {kafka_broker}")
+        logger.info(f"[ENGINE] Productor Kafka conectado a {kafka_broker}")
     except Exception as e:
-        print(f"[ENGINE] Error conectando productor Kafka: {e}")
+        logger.error(f"[ENGINE] Error conectando productor Kafka: {e}")
         return
 
 def send_to_kafka(asunto, message):
@@ -167,12 +190,12 @@ def send_to_kafka(asunto, message):
             kafka_producer.send(asunto, value=message)
 
             kafka_producer.flush() #El flush manda lo que tiene por si acaso
-            print(f"[ENGINE] Mensaje enviado a {asunto}: {message}")
+            logger.info(f"[ENGINE] Mensaje enviado a {asunto}: {message}")
         else:
-            print(f"[ENGINE] Productor Kafka no inicializado")
+            logger.warning(f"[ENGINE] Productor Kafka no inicializado")
 
     except Exception as e:
-        print(f"[ENGINE] Error mandando mensaje Kafka: {e}")
+        logger.error(f"[ENGINE] Error mandando mensaje Kafka: {e}")
 
 def handle_kafka_message(message):
     global cp_state
@@ -190,17 +213,17 @@ def handle_kafka_message(message):
             
             if message_type == "STOP":
 
-                print(f"\n[ENGINE] STOP recibido desde CENTRAL mediante Kafka")
+                logger.info(f"\n[ENGINE] STOP recibido desde CENTRAL mediante Kafka")
 
                 if cp_state["suministro_activo"]:
-                    print("[ENGINE] Deteniendo suministro activo...")
+                    logger.info("[ENGINE] Deteniendo suministro activo...")
                     cp_state["suministro_activo"] = False
                     stop_suministro.set()
                     
 
                 cp_state["status"] = "PARADO"
-                print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
-                print("[ENGINE] CP fuera de servicio (OoO)\n")
+                logger.info(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
+                logger.warning("[ENGINE] CP fuera de servicio (OoO)\n")
 
                     #Notificar a Central
                 send_to_kafka('cp-estado', {
@@ -215,10 +238,10 @@ def handle_kafka_message(message):
 
             elif message_type=="CONTINUE":
 
-                print(f"\n[ENGINE] REANUDAR recibido desde CENTRAL mediante Kafka")
+                logger.info(f"\n[ENGINE] REANUDAR recibido desde CENTRAL mediante Kafka")
                 cp_state["status"] = "ACTIVADO"
-                print(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
-                print("[ENGINE] CP activado y disponible\n")
+                logger.info(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
+                logger.info("[ENGINE] CP activado y disponible\n")
 
                 #Notificar a Central
                 send_to_kafka('cp-estado', {
@@ -230,19 +253,19 @@ def handle_kafka_message(message):
 
 
             else:
-                print("[ENGINE] Mensaje recibido pero no reconocido")
+                logger.warning("[ENGINE] Mensaje recibido pero no reconocido")
         
         elif topic=='autorizacion-suministro':
-            print(f"\n[ENGINE] Autorizado suministro en {cp_id}")
+            logger.info(f"\n[ENGINE] Autorizado suministro en {cp_id}")
             cp_state["status"] = "AUTORIZADO"
             cp_state["conductor_id"] = data.get("conductor_id")
-            print(f"[ENGINE] Esperando que el conductor enchufe su vehículo\n")
+            logger.info(f"[ENGINE] Esperando que el conductor enchufe su vehículo\n")
 
         else:
-            print(f"[ENGINE] Mensaje recibido pero topic {topic} no reconocido")
+            logger.warning(f"[ENGINE] Mensaje recibido pero topic {topic} no reconocido")
 
     except Exception as e:
-        print(f"[ENGINE] Error procesando mensaje Kafka: {e}")    
+        logger.error(f"[ENGINE] Error procesando mensaje Kafka: {e}")    
 
 
 def menu_local_cp():
@@ -388,7 +411,7 @@ def finalizar_suministro(duracion):
 def kafka_consumer_thread(kafka_broker, cp_id):
 
     global kafka_consumer
-    print(f"[ENGINE] Iniciando consumidor Kafka")
+    logger.info(f"[ENGINE] Iniciando consumidor Kafka")
 
     try:
         kafka_consumer= KafkaConsumer(
@@ -402,7 +425,7 @@ def kafka_consumer_thread(kafka_broker, cp_id):
             consumer_timeout_ms=TIMEOUT
             )
 
-        print(f"[ENGINE] Consumidor Kafka conectado\n")
+        logger.info(f"[ENGINE] Consumidor Kafka conectado\n")
 
         while True:
 
@@ -416,20 +439,20 @@ def kafka_consumer_thread(kafka_broker, cp_id):
                         handle_kafka_message(message)
 
     except Exception as e:
-        print(f"[ENGINE] Error en Consumidor Kafka: {e}")
+        logger.error(f"[ENGINE] Error en Consumidor Kafka: {e}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Uso: python EV_CP_E.py <KAFKA_BROKER>")
+        logger.error("Uso: python EV_CP_E.py <KAFKA_BROKER>")
         sys.exit(1)
     
 
 
     kafka_broker = sys.argv[1]
     
-    print(f"[ENGINE] Esperando conexión de Monitor...\n")
-    print(f"Socket Monitor: {SERVER}:{PORT}")
-    print(f"Kafka Broker: {kafka_broker}\n")
+    logger.info(f"[ENGINE] Esperando conexión de Monitor...\n")
+    logger.info(f"Socket Monitor: {SERVER}:{PORT}")
+    logger.info(f"Kafka Broker: {kafka_broker}\n")
 
     socket_thread = threading.Thread(target=start_socket_monitor, daemon=True)
     socket_thread.start()
@@ -440,7 +463,7 @@ if __name__ == "__main__":
         menu_local_cp()
 
     except KeyboardInterrupt:
-        print("\n[ENGINE] Apagando...")
+        logger.warning("\n[ENGINE] Apagando...")
     
 
     
