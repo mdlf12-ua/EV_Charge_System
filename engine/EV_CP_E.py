@@ -207,8 +207,11 @@ def handle_kafka_message(message):
         cp_id=data.get("cp_id")
         topic=message.topic
 
+        logger.info(f"[ENGINE DEBUG] Topic: {topic}, Type: {message_type}, CP_ID msg: {cp_id}, CP_ID local: {cp_state['cp_id']}")
+
         if topic=='cp-ordenes':
             if cp_id != cp_state["cp_id"]:
+                logger.warning(f"[ENGINE] Mensaje no es para este CP (esperado: {cp_state['cp_id']}, recibido: {cp_id})")
                 return
             
             if message_type == "STOP":
@@ -217,12 +220,13 @@ def handle_kafka_message(message):
 
                 if cp_state["suministro_activo"]:
                     logger.info("[ENGINE] Deteniendo suministro activo...")
-                    cp_state["suministro_activo"] = False
                     stop_suministro.set()
-                    
+                    cp_state["suministro_activo"] = False
+                    time.sleep(1)
 
+                estado_anterior = cp_state["status"]
                 cp_state["status"] = "PARADO"
-                logger.info(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
+                logger.info(f"[ENGINE] Estado cambiado: {estado_anterior} -> {cp_state['status']}")
                 logger.warning("[ENGINE] CP fuera de servicio (OoO)\n")
 
                     #Notificar a Central
@@ -243,13 +247,18 @@ def handle_kafka_message(message):
                 logger.info(f"[ENGINE] Estado cambiado a: {cp_state['status']}")
                 logger.info("[ENGINE] CP activado y disponible\n")
 
+                estado_anterior = cp_state["status"]
+                cp_state["status"] = "ACTIVADO"
+                logger.info(f"[ENGINE] Estado cambiado: {estado_anterior} -> {cp_state['status']}")
+                logger.info("[ENGINE] CP ACTIVADO Y DISPONIBLE\n")
+
                 #Notificar a Central
                 send_to_kafka('cp-estado', {
                     "cp_id": cp_state["cp_id"],
                     "status": "ACTIVADO",
                     "timestamp": time.time(),
                     "reason": "orden_central"
-                    })
+                })
 
 
             else:

@@ -481,6 +481,17 @@ def kafka_consumer_thread():
                 elif topic=="cp-estado":
                     cp_id=data.get("cp_id")
 
+                    with lock:
+                        if cp_id in central_cps:
+                            estado_anterior = central_cps[cp_id]["ESTADO"]
+                            nuevo_estado = data.get("status")
+                            central_cps[cp_id]["ESTADO"] = nuevo_estado
+                            
+                            # ✓ Ahora sí imprimimos correctamente
+                            print(f"[CENTRAL] Estado de CP {cp_id} cambiado: {estado_anterior} -> {nuevo_estado}")
+                        else:
+                            print(f"[CENTRAL] Recibido estado de CP desconocido: {cp_id}")
+
                     if msg_type=="suministro_finalizado":
                         conductor_id = data.get("conductor_id")
                         consumo_kw = data.get("consumo_total")
@@ -576,15 +587,16 @@ def send_order_cp(cp_id, order_type):
         }
         
         kafka_producer.send('cp-ordenes', value=message)
+        kafka_producer.flush()
         
         log.info(f"[CENTRAL] Orden del tipo {order_type} enviada a CP {cp_id} por Kafka")
         
-        with lock: #Actualizamos en local también
-            if cp_id in central_cps:
-                if order_type == "STOP":
-                    central_cps[cp_id]["ESTADO"] = "PARADO"
-                elif order_type == "CONTINUE":
-                    central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+        # with lock: #Actualizamos en local también
+        #     if cp_id in central_cps:
+        #         if order_type == "STOP":
+        #             central_cps[cp_id]["ESTADO"] = "PARADO"
+        #         elif order_type == "CONTINUE":
+        #             central_cps[cp_id]["ESTADO"] = "ACTIVADO"
         
         return True
         
