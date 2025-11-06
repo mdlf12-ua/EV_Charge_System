@@ -45,6 +45,111 @@ services:
     volumes:
       - ./logs:/app/logs
 
+  engine4:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine4
+    ports:
+      - "6003:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine4
+    volumes:
+      - ./logs:/app/logs
+
+  engine5:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine5
+    ports:
+      - "6004:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine5
+    volumes:
+      - ./logs:/app/logs
+
+  engine6:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine6
+    ports:
+      - "6005:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine6
+    volumes:
+      - ./logs:/app/logs
+
+  engine7:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine7
+    ports:
+      - "6006:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine7
+    volumes:
+      - ./logs:/app/logs
+
+  engine8:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine8
+    ports:
+      - "6007:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine8
+    volumes:
+      - ./logs:/app/logs
+
+  engine9:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine9
+    ports:
+      - "6008:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine9
+    volumes:
+      - ./logs:/app/logs
+
+  engine10:
+    tty: true
+    stdin_open: true
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: engine10
+    ports:
+      - "6009:6000"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ENGINE_NAME: engine10
+    volumes:
+      - ./logs:/app/logs
+
   # ======== MONITORES ========
   monitor1:
     build:
@@ -81,3 +186,87 @@ services:
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
       CP_ID: CP003
+
+  monitor4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor4
+    environment:
+      ENGINE_IP: engine4
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP004
+
+  monitor5:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor5
+    environment:
+      ENGINE_IP: engine5
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP005
+
+  monitor6:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor6
+    environment:
+      ENGINE_IP: engine6
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP006
+
+  monitor7:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor7
+    environment:
+      ENGINE_IP: engine7
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP007
+
+  monitor8:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor8
+    environment:
+      ENGINE_IP: engine8
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP008
+
+  monitor9:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor9
+    environment:
+      ENGINE_IP: engine9
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP009
+
+  monitor10:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor10
+    environment:
+      ENGINE_IP: engine10
+      ENGINE_PORT: 6000
+      CENTRAL_IP: ${CENTRAL_IP}
+      CENTRAL_PORT: ${CENTRAL_PORT}
+      CP_ID: CP010
