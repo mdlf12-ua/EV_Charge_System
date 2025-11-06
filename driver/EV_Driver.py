@@ -133,7 +133,7 @@ def solicitar_suministro(cp_id):
     
     with lock_driver:
         if not driver_state["suministro_activo"] and driver_state["current_cp"] is None:
-            print("[DRIVER] XXXSuministro denegado")
+            print("[DRIVER] Suministro denegado")
             driver_state["esperando_respuesta"] = False
             return False
         
