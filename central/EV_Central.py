@@ -589,13 +589,22 @@ def send_order_cp(cp_id, order_type):
         kafka_producer.flush()
         
         log.info(f"[CENTRAL] Orden del tipo {order_type} enviada a CP {cp_id} por Kafka")
+
+        conductor_afectado = None
+        with lock:
+            if cp_id in central_cps:
+                conductor_afectado = central_cps[cp_id].get("CONDUCTOR_ID")
         
-        # with lock: #Actualizamos en local también
-        #     if cp_id in central_cps:
-        #         if order_type == "STOP":
-        #             central_cps[cp_id]["ESTADO"] = "PARADO"
-        #         elif order_type == "CONTINUE":
-        #             central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+        if order_type == "STOP" and conductor_afectado:
+            log.info(f"[CENTRAL] Notificando a conductor {conductor_afectado} que su CP fue parado")
+            notificar_driver(conductor_afectado, "cp_parado", {
+                "cp_id": cp_id,
+                "message": "El CP fue puesto fuera de servicio por la Central"
+            })
+        
+            with lock:
+                if cp_id in central_cps:
+                    central_cps[cp_id]["CONDUCTOR_ID"] = None
         
         return True
         

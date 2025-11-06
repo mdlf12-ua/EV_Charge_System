@@ -316,6 +316,19 @@ def handle_kafka_message(message):
                     driver_state["suministro_activo"] = True
                     driver_state["ultima_telemetria"] = time.time()
 
+            elif msg_type == "cp_parado":
+                print(f"\n[DRIVER] CP {data.get('cp_id')} fue PARADO por Central")
+                print("[DRIVER] El suministro ha sido cancelado")
+                
+                with lock_driver:
+                    if driver_state["current_cp"] == data.get("cp_id"):
+                        driver_state["suministro_activo"] = False
+                        driver_state["current_cp"] = None
+                        driver_state["ultima_telemetria"] = None
+                        driver_state["esperando_respuesta"] = False
+                
+                evento_finalizacion.set()
+
             elif msg_type == "suministro_finalizado":
                 print(f"\n[DRIVER] Suministro FINALIZADO")
 
