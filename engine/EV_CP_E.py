@@ -269,7 +269,7 @@ def handle_kafka_message(message):
             logger.info(f"\n[ENGINE] Autorizado suministro en {cp_id}")
             cp_state["status"] = "AUTORIZADO"
             cp_state["conductor_id"] = data.get("conductor_id")
-            logger.info(f"[ENGINE] Esperando que el conductor enchufe su vehículo\n")
+            print(f"[ENGINE] Esperando que el conductor enchufe su vehículo\n")
 
         else:
             logger.warning(f"[ENGINE] Mensaje recibido pero topic {topic} no reconocido")

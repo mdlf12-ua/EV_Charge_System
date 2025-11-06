@@ -223,7 +223,7 @@ def handle_kafka_message(message):
                 driver_state["current_cp"] = data.get("cp_id")
 
             elif msg_type=="autorizacion_denegada":
-                print(f"\n[DRIVER] Suministro denegado en CP {data.get('cp_id')}")
+                print(f"\n[DRIVER] Suministro denegado en CP {data.get('cp_id')} por: {data.get('message')}")
 
             elif msg_type == "suministro_iniciado":
                 print(f"\n[DRIVER] Suministro INICIADO en CP {data.get('cp_id')}")
