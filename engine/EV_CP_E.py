@@ -209,7 +209,7 @@ def handle_kafka_message(message):
 
         logger.info(f"[ENGINE DEBUG] Topic: {topic}, Type: {message_type}, CP_ID msg: {cp_id}, CP_ID local: {cp_state['cp_id']}")
 
-        if topic=='cp-ordenes':
+        if topic==f'cp-ordenes-{cp_id}':
             if cp_id != cp_state["cp_id"]:
                 logger.warning(f"[ENGINE] Mensaje no es para este CP (esperado: {cp_state['cp_id']}, recibido: {cp_id})")
                 return
@@ -264,7 +264,7 @@ def handle_kafka_message(message):
             else:
                 logger.warning("[ENGINE] Mensaje recibido pero no reconocido")
         
-        elif topic=='autorizacion-suministro':
+        elif topic==f'autorizacion-suministro-{cp_id}':
             logger.info(f"\n[ENGINE] Autorizado suministro en {cp_id}")
             cp_state["status"] = "AUTORIZADO"
             cp_state["conductor_id"] = data.get("conductor_id")
@@ -424,8 +424,8 @@ def kafka_consumer_thread(kafka_broker, cp_id):
 
     try:
         kafka_consumer= KafkaConsumer(
-            'cp-ordenes',
-            'autorizacion-suministro', #Esto es el asunto del mensaje
+            f'cp-ordenes-{cp_id}',
+            f'autorizacion-suministro-{cp_id}', #Esto es el asunto del mensaje
             bootstrap_servers=kafka_broker,
             group_id=f'engine-{cp_id}', #Pone a los cp en un grupo de consumidores
             value_deserializer=lambda m: json.loads(m.decode('utf-8')), #El mensaje se recibe en formato JSON

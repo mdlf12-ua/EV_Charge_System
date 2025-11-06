@@ -42,7 +42,8 @@ for noisy in [
 #CONSUMIDOR: cp-telemetria (del Engine)
 # PRODUCTOR: notificaciones-{driver_id} (al Driver)
 # PRODUCTOR: datos-consumo-{driver_id} (telemetría al Driver)
-# PRODUCTOR: cp-ordenes (al Engine)               
+# PRODUCTOR: f'cp-ordenes-{cp_id}' (al Engine) 
+# Productor: f'autorizacion-suministro-{cp_id}' (al Engine)              
 
 HEADER = 64
 PORT = 5000
@@ -419,7 +420,7 @@ def send_autorizacion_engine(cp_id, driver_id):
             "timestamp": time.time()
         }
         
-        kafka_producer.send('autorizacion-suministro', value=message)
+        kafka_producer.send(f'autorizacion-suministro-{cp_id}', value=message)
         kafka_producer.flush()
         
         print(f"[CENTRAL] Autorización enviada a Engine {cp_id}")
@@ -585,7 +586,7 @@ def send_order_cp(cp_id, order_type):
             "timestamp": time.time()
         }
         
-        kafka_producer.send('cp-ordenes', value=message)
+        kafka_producer.send(f'cp-ordenes-{cp_id}', value=message)
         kafka_producer.flush()
         
         log.info(f"[CENTRAL] Orden del tipo {order_type} enviada a CP {cp_id} por Kafka")
