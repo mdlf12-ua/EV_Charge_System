@@ -103,8 +103,58 @@ def search_CP():
     conexion.close()
     log.info(f"[CENTRAL] Cargados {len(central_cps)} CPs desde la BD.")
 
+def insertar_cps_en_bd():
+    DB_HOST = os.getenv("DB_HOST", "mysql")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_USER = os.getenv("DB_USER", "usuario")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
+    DB_NAME = os.getenv("DB_NAME", "database")
 
-#Función que utilizara cada hilo para antender a un cliente
+    # Conectar a la base de datos
+    try:
+        conexion = mysql.connector.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        log.info("Conectado a MySQL para insertar los CPs.")
+    except mysql.connector.Error as err:
+        log.error(f"[CENTRAL] No se pudo conectar a MySQL: {err}")
+        return
+
+    cursor = conexion.cursor()
+
+    for cp_id, cp_info in central_cps.items():
+        try:
+            cursor.execute("""
+                INSERT INTO ChargingPoint (ID, Ubicacion, PRECIO, ESTADO, CONDUCTOR_ID, CONSUMO_KW, IMPORTE_EU)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE 
+                    Ubicacion = VALUES(Ubicacion),
+                    PRECIO = VALUES(PRECIO),
+                    ESTADO = VALUES(ESTADO),
+                    CONDUCTOR_ID = VALUES(CONDUCTOR_ID),
+                    CONSUMO_KW = VALUES(CONSUMO_KW),
+                    IMPORTE_EU = VALUES(IMPORTE_EU)
+            """, (
+                cp_info["ID"],
+                cp_info["Ubicacion"],
+                cp_info["PRECIO"],
+                cp_info["ESTADO"],
+                cp_info["CONDUCTOR_ID"],
+                cp_info["CONSUMO_KW"],
+                cp_info["IMPORTE_EU"]
+            ))
+            conexion.commit()  # Confirmamos la inserción o actualización
+            log.info(f"[CENTRAL] CP {cp_info['ID']} insertado o actualizado en la base de datos.")
+        except mysql.connector.Error as e:
+            log.error(f"[CENTRAL] Error al insertar o actualizar el CP {cp_info['ID']} en la base de datos: {e}")
+
+    # Cerrar conexión
+    conexion.close()
+    log.info("[CENTRAL] Todos los CPs han sido insertados/actualizados en la base de datos.")
 #Función que utilizara cada hilo para antender a un cliente
 def handle_CP(conn, addr):
     log.info(f"[NUEVA CONEXION] {addr} connected.")
@@ -811,4 +861,6 @@ finally:
         kafka_consumer.close()
     log.info("[CENTRAL] Sistema cerrado")
 
+
 log.info("ACABO")
+insertar_cps_en_bd()
