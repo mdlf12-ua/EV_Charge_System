@@ -503,7 +503,6 @@ def kafka_consumer_thread():
                             if cp_id in central_cps:
                                 status = data.get("status")
                                 central_cps[cp_id]["ESTADO"] = status
-                    print(f"[CENTRAL] Estado cambiado en Engine de {central_cps[cp_id]["ESTADO"]} a {data.get("status")} con éxito")
 
 
                 elif topic=="cp-telemetria":
