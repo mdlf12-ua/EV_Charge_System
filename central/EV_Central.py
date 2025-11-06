@@ -488,7 +488,6 @@ def kafka_consumer_thread():
                             nuevo_estado = data.get("status")
                             central_cps[cp_id]["ESTADO"] = nuevo_estado
                             
-                            # ✓ Ahora sí imprimimos correctamente
                             print(f"[CENTRAL] Estado de CP {cp_id} cambiado: {estado_anterior} -> {nuevo_estado}")
                         else:
                             print(f"[CENTRAL] Recibido estado de CP desconocido: {cp_id}")
