@@ -187,6 +187,7 @@ def modo_automatico(filepath):
         print(f"[DRIVER] Error leyendo archivo: {e}")
 
     for cp in lista_cps:
+        print(f"[DRIVER] Solicitando suministro para {cp}")
         solicitar_suministro(cp)
         time.sleep(4)
 
@@ -252,8 +253,8 @@ def handle_kafka_message(message):
                 print(f"\n[DRIVER] Menaje no reconnocido, mensaje: {msg_type}")
 
         elif topic==f"datos-consumo-{driver_id}":
-            print(f"Consumo: {data.get('consumo_kw')}")
-            print(f"Consumo: {data.get('importe_euro')}")
+            print(f"Consumo (Kw): {data.get('consumo_kw')}")
+            print(f"Consumo (€): {data.get('importe_euro')}")
             
 
 

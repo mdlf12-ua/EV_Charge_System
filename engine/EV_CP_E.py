@@ -125,7 +125,8 @@ def handle_client(conn, addr):
         "timestamp": time.time(),
         "ubicacion": UBICACION,
         "consumo_kw": cp_state["consumo_kw"],
-        "importe_euro":cp_state["importe_euro"]
+        "importe_euro":cp_state["importe_euro"],
+        "precio_kwh":cp_state["precio_kwh"]
     })
 
     # Ahora podemos iniciar Kafka
