@@ -1,12 +1,12 @@
 services:
-  driver:
+  driver1:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV001
+    container_name: driver1
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV001
     volumes:
@@ -15,10 +15,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV002
+    container_name: driver2
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV002
     volumes:
@@ -28,10 +28,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV003
+    container_name: driver3
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV003
     volumes:
@@ -41,10 +41,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV004
+    container_name: driver4
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV004
     volumes:
@@ -54,10 +54,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV005
+    container_name: driver5
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV005
     volumes:
@@ -67,10 +67,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV006
+    container_name: driver6
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV006
     volumes:
@@ -80,10 +80,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV007
+    container_name: driver7
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV007
     volumes:
@@ -93,10 +93,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV008
+    container_name: driver8
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV008
     volumes:
@@ -106,10 +106,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV009
+    container_name: driver9
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV009
     volumes:
@@ -119,10 +119,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: driver-DRV0010
+    container_name: driver10
     environment:
       # Kafka externo (listener EXTERNAL)
-      KAFKA_BROKER: 192.168.1.33:9092
+      KAFKA_BROKER: ${KAFKA_BROKER}
       # Identidad del conductor/cliente
       DRIVER_ID: DRV0010
     volumes:
