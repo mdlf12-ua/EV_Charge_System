@@ -289,10 +289,13 @@ def menu_local_cp():
     
     while True:
 
+        print(f"CP ID: {cp_state['cp_id']}")
+        print(f"Estado: {cp_state['status']}")
         print("\nOpciones:")
         print("  1. Enchufar vehículo (iniciar suministro)")
         print("  2. Desenchufar vehículo (finalizar suministro)")
         print("  0. Salir")
+        print("  r. Refrescar")
         print("-------------------------------------------------------")
         
         try:
@@ -324,6 +327,11 @@ def menu_local_cp():
                 else:
                     print("[ENGINE] Cerrando menú...")
                     break
+            elif opcion == "r":
+                continue
+
+            else:
+                print("[ENGINE] Opcion no reconocida")
 
         except KeyboardInterrupt:
             print("\n[ENGINE] Interrumpido")
