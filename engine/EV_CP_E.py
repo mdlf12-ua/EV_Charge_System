@@ -294,6 +294,7 @@ def menu_local_cp():
         print("\nOpciones:")
         print("  1. Enchufar vehículo (iniciar suministro)")
         print("  2. Desenchufar vehículo (finalizar suministro)")
+        print("  3. Simular averia")
         print("  0. Salir")
         print("  r. Refrescar")
         print("-------------------------------------------------------")
@@ -319,7 +320,10 @@ def menu_local_cp():
                     cp_state["suministro_activo"] = False
                 else:
                     print("[ENGINE] No hay suministro activo")
-
+            elif opcion == "3":
+                print("Simulando Averia")
+                cp_state["health_status"] = "KO"
+                cp_state["status"] = "Averiado"
             elif opcion == "0":
 
                 if cp_state["suministro_activo"]:
