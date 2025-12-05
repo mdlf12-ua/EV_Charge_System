@@ -6,8 +6,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY EV_Central.py .
+# Copiamos ambos programas
+COPY EV_Central.py API_Central.py .
 
 RUN mkdir -p /app/logs
 
+# Este CMD lo usa SOLO el servicio ev_central
 CMD ["sh", "-c", "python -u EV_Central.py ${CENTRAL_PORT} ${KAFKA_IP} ${KAFKA_PORT}"]
