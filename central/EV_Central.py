@@ -252,7 +252,6 @@ def handle_CP(conn, addr):
 
 
     conn.close()
-    
 def start_socket():
     #El servidor escucha:
     server.listen()
@@ -812,6 +811,15 @@ def central_menu():
         else:
             print(f"[ERROR] Opción '{opcion}' no válida. Inténtalo de nuevo.")
 
+def sync_cps_periodicamente(intervalo_segundos=5):
+
+    log.info(f"[CENTRAL] Hilo de sincronización BD iniciado (cada {intervalo_segundos}s).")
+    while True:
+        try:
+            insertar_cps_en_bd()
+        except Exception as e:
+            log.error(f"[CENTRAL] Error en sincronización periódica con BD: {e}")
+        time.sleep(intervalo_segundos)
 
 
 ######################### MAIN ##########################
@@ -857,6 +865,8 @@ if kafka_consumer:
     consumer_thread = threading.Thread(target=kafka_consumer_thread, daemon=True)
     consumer_thread.start()
 
+sync_thread = threading.Thread(target=sync_cps_periodicamente, args=(5,), daemon=True)
+sync_thread.start()
 
 try:
     central_menu()
