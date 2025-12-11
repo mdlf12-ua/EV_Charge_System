@@ -93,7 +93,7 @@ def search_CP():
             "ID": row["ID"],
             "Ubicacion": row["Ubicacion"],
             "PRECIO": row["PRECIO"],
-            "ESTADO": 'Parado',
+            "ESTADO": 'PARADO',
             "CONDUCTOR_ID": row["CONDUCTOR_ID"],
             "CONSUMO_KW": row["CONSUMO_KW"],
             "IMPORTE_EU": row["IMPORTE_EU"]
@@ -187,12 +187,12 @@ def handle_CP(conn, addr):
                         "ID": cp_id,
                         "Ubicacion": None,
                         "PRECIO": None,
-                        "ESTADO": "Parado",
+                        "ESTADO": "PARADO",
                         "CONDUCTOR_ID": None,
                         "CONSUMO_KW": None,
                         "IMPORTE_EU": None
                     })
-                    info["ESTADO"] = "Averiado"
+                    info["ESTADO"] = "AVERIADO"
                     info["ULTIMA_AVERIA"] = motivo
                     info["TS_ULTIMO_CAMBIO"] = time.strftime("%Y-%m-%d %H:%M:%S")
                     central_cps[cp_id] = info
@@ -210,7 +210,7 @@ def handle_CP(conn, addr):
                 with lock:
                     info = central_cps.get(cp_id, {
                         "ID": cp_id, "Ubicacion": None, "PRECIO": None,
-                        "ESTADO": "Parado", "CONDUCTOR_ID": None,
+                        "ESTADO": "PARADO", "CONDUCTOR_ID": None,
                         "CONSUMO_KW": None, "IMPORTE_EU": None
                     })
                     # tras recuperación lo dejamos operativo (ajusta al estado que queráis)
@@ -243,7 +243,7 @@ def handle_CP(conn, addr):
             #Esperamos a que se desbloquee el acceso a central_cps para poder acceder a el.
             with lock:
                 central_cps[cp_id] = nuevo
-            if estado == "Desconectado":
+            if estado == "DESCONECTADO":
                 break
             log.info(f"ID: {cp_id}")
             log.info(f"Ubicación: {ubicacion}")
