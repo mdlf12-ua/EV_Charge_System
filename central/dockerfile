@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiamos ambos programas
-COPY EV_Central.py API_Central.py .
+COPY EV_Central.py API_Central.py EV_W.py .
 
 RUN mkdir -p /app/logs
 

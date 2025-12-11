@@ -34,7 +34,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 #Una copia de los metadatos del kafka porque tenemos un nodo en el cluster
 
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://172.27.187.57:9092 #PLAINTEXT_HOST://192.168.18.28:9092 #Hay que poner la IP del que lanza el docker en vez de kafka
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.18.18:9092 #PLAINTEXT_HOST://192.168.18.28:9092 #Hay que poner la IP del que lanza el docker en vez de kafka
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
 
@@ -60,6 +60,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+  ev_w:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      api_central:
+        condition: service_started
+    environment:
+      OPENWEATHER_API_KEY: "c469d40985c2772a191a871b666b842d"
+      API_CENTRAL_BASE: "http://api_central:8000"
+      POLL_INTERVAL: 4
+    command: ["python", "-u", "EV_W.py"]
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./logs:/app/logs
+
 
   ev_central:
     build:
@@ -70,7 +87,7 @@ services:
         condition: service_healthy
     environment:
       CENTRAL_PORT: 5000        # puerto donde escucha tu socket
-      KAFKA_IP: 172.27.187.57   # IP LAN del host donde corre Kafka
+      KAFKA_IP: 192.168.18.18  # IP LAN del host donde corre Kafka
       KAFKA_PORT: 9092
       DB_HOST: mysql
       DB_PORT: 3306
