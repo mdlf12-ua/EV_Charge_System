@@ -126,35 +126,79 @@ def insertar_cps_en_bd():
 
     cursor = conexion.cursor()
 
-    for cp_id, cp_info in central_cps.items():
+    # Copia segura para iterar sin problemas si se modifica central_cps en otros hilos
+    with lock:
+        cps_items = list(central_cps.items())
+
+    for cp_id, cp_info in cps_items:
         try:
+            ubicacion = cp_info.get("Ubicacion")
+
+            # 1) Consultar si la ciudad está en alerta (WeatherAlert)
+            alerta_meteo = 0
+            if ubicacion:
+                cursor.execute(
+                    "SELECT alert_active FROM WeatherAlert WHERE location = %s",
+                    (ubicacion,)
+                )
+                row = cursor.fetchone()
+                if row is not None:
+                    alerta_meteo = int(row[0])
+
+            # 2) Si hay alerta y el CP NO está ya parado/averiado/desconectado -> mandar STOP una vez
+            # (Esto lo hace CENTRAL, que es quien manda sobre ESTADO y órdenes)
+            if alerta_meteo == 1:
+                with lock:
+                    estado_actual = central_cps.get(cp_id, {}).get("ESTADO")
+
+                if estado_actual not in ("PARADO", "AVERIADO", "DESCONECTADO"):
+                    log.warning(f"[CENTRAL] Ciudad en alerta ({ubicacion}). Parando CP {cp_id} (estado={estado_actual})")
+                    send_order_cp(cp_id, "STOP")
+
+                    with lock:
+                        if cp_id in central_cps:
+                            central_cps[cp_id]["ESTADO"] = "PARADO"
+                            estado_actual = "PARADO"  # para guardar lo correcto en BD
+
+            # 3) Guardar CP en BD incluyendo ALERTA_METEO
+            # Re-leemos el estado final desde memoria (por si lo acabamos de cambiar)
+            with lock:
+                estado_final = central_cps.get(cp_id, {}).get("ESTADO", cp_info.get("ESTADO"))
+
             cursor.execute("""
-                INSERT INTO ChargingPoint (ID, Ubicacion, PRECIO, ESTADO, CONDUCTOR_ID, CONSUMO_KW, IMPORTE_EU)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE 
+                INSERT INTO ChargingPoint
+                    (ID, Ubicacion, PRECIO, ESTADO, CONDUCTOR_ID, CONSUMO_KW, IMPORTE_EU, ALERTA_METEO)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
                     Ubicacion = VALUES(Ubicacion),
                     PRECIO = VALUES(PRECIO),
                     ESTADO = VALUES(ESTADO),
                     CONDUCTOR_ID = VALUES(CONDUCTOR_ID),
                     CONSUMO_KW = VALUES(CONSUMO_KW),
-                    IMPORTE_EU = VALUES(IMPORTE_EU)
+                    IMPORTE_EU = VALUES(IMPORTE_EU),
+                    ALERTA_METEO = VALUES(ALERTA_METEO)
             """, (
-                cp_info["ID"],
-                cp_info["Ubicacion"],
-                cp_info["PRECIO"],
-                cp_info["ESTADO"],
-                cp_info["CONDUCTOR_ID"],
-                cp_info["CONSUMO_KW"],
-                cp_info["IMPORTE_EU"]
+                cp_info.get("ID"),
+                ubicacion,
+                cp_info.get("PRECIO"),
+                estado_final,
+                cp_info.get("CONDUCTOR_ID"),
+                cp_info.get("CONSUMO_KW"),
+                cp_info.get("IMPORTE_EU"),
+                alerta_meteo
             ))
-            conexion.commit()  # Confirmamos la inserción o actualización
-            log.info(f"[CENTRAL] CP {cp_info['ID']} insertado o actualizado en la base de datos.")
-        except mysql.connector.Error as e:
-            log.error(f"[CENTRAL] Error al insertar o actualizar el CP {cp_info['ID']} en la base de datos: {e}")
 
-    # Cerrar conexión
+            conexion.commit()
+            log.info(f"[CENTRAL] CP {cp_info.get('ID')} insertado/actualizado en BD (alerta_meteo={alerta_meteo}).")
+
+        except mysql.connector.Error as e:
+            log.error(f"[CENTRAL] Error al insertar/actualizar el CP {cp_info.get('ID')}: {e}")
+        except Exception as e:
+            log.error(f"[CENTRAL] Error inesperado en insertar_cps_en_bd para CP {cp_info.get('ID')}: {e}")
+
     conexion.close()
     log.info("[CENTRAL] Todos los CPs han sido insertados/actualizados en la base de datos.")
+
 #Función que utilizara cada hilo para antender a un cliente
 def handle_CP(conn, addr):
     log.info(f"[NUEVA CONEXION] {addr} connected.")
