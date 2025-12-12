@@ -95,14 +95,20 @@ def weather_alert():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
+            INSERT INTO WeatherAlert (location, alert_active, last_temp)
+            VALUES (%s, 1, %s)
+            ON DUPLICATE KEY UPDATE
+                alert_active = 1,
+                last_temp = VALUES(last_temp)
+        """, (location, temp))
+
+        cursor.execute("""
             UPDATE ChargingPoint
             SET ALERTA_METEO = 1
             WHERE Ubicacion = %s
-            """,
-            (location,),
-        )
+        """, (location,))
+
 
         afectados = cursor.rowcount
         conn.commit()
@@ -141,14 +147,20 @@ def weather_recover():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
+            INSERT INTO WeatherAlert (location, alert_active, last_temp)
+            VALUES (%s, 0, %s)
+            ON DUPLICATE KEY UPDATE
+                alert_active = 0,
+                last_temp = VALUES(last_temp)
+        """, (location, temp))
+
+        cursor.execute("""
             UPDATE ChargingPoint
             SET ALERTA_METEO = 0
             WHERE Ubicacion = %s
-            """,
-            (location,),
-        )
+        """, (location,))
+
 
         afectados = cursor.rowcount
         conn.commit()
