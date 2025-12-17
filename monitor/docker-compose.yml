@@ -12,8 +12,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine1
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine2:
     tty: true
@@ -27,8 +30,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine2
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine3:
     tty: true
@@ -42,8 +48,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine3
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine4:
     tty: true
@@ -57,8 +66,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine4
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine5:
     tty: true
@@ -72,8 +84,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine5
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine6:
     tty: true
@@ -87,8 +102,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine6
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine7:
     tty: true
@@ -102,8 +120,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine7
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine8:
     tty: true
@@ -117,8 +138,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine8
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine9:
     tty: true
@@ -132,8 +156,11 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine9
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   engine10:
     tty: true
@@ -147,11 +174,16 @@ services:
     environment:
       KAFKA_BROKER: ${KAFKA_BROKER}
       ENGINE_NAME: engine10
+      TLS_ENABLED: "1"
+      TLS_CERT: /app/certs/certServ.pem
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   # ======== MONITORES ========
   monitor1:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -161,7 +193,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP001
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor2:
     build:
@@ -173,7 +209,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP002
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor3:
     build:
@@ -185,7 +225,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP003
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor4:
     build:
@@ -197,7 +241,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP004
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor5:
     build:
@@ -209,7 +257,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP005
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor6:
     build:
@@ -221,7 +273,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP006
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor7:
     build:
@@ -233,7 +289,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP007
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor8:
     build:
@@ -245,7 +305,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP008
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor9:
     build:
@@ -257,7 +321,11 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP009
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
 
   monitor10:
     build:
@@ -269,4 +337,8 @@ services:
       ENGINE_PORT: 6000
       CENTRAL_IP: ${CENTRAL_IP}
       CENTRAL_PORT: ${CENTRAL_PORT}
+      TLS_ENABLED: "1"
       CP_ID: CP010
+      TLS_CA: /app/certs/certServ.pem
+    volumes:
+      - ../certs:/app/certs:ro
