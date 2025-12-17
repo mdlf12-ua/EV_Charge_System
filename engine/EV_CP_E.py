@@ -6,6 +6,16 @@ import json
 from kafka import KafkaProducer, KafkaConsumer
 import os
 import logging
+import ssl
+
+TLS_ENABLED = os.getenv("TLS_ENABLED", "1") == "1"
+TLS_CERT = os.getenv("TLS_CERT", "/app/certs/certServ.pem")
+
+_tls_ctx = None
+if TLS_ENABLED:
+    _tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # certServ.pem contiene cert + private key (como el ejemplo del profe)
+    _tls_ctx.load_cert_chain(certfile=TLS_CERT, keyfile=TLS_CERT)
 
 # === CONFIGURACIÓN DE LOGS ===
 os.makedirs("logs", exist_ok=True)
@@ -36,7 +46,7 @@ FORMAT = 'utf-8'
 HEADER = 64
 MAX_CONEXIONES = 20
 TIMEOUT = 5000 #In miliseconds
-UBICACION="BARCELONA"
+UBICACION="Yakutsk"
 PRECIO=1
 CONSUMO=0.0
 KWH=3600.0
@@ -161,10 +171,22 @@ def start_socket_monitor():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(ADDR)
     server.listen()
-    logger.info(f"[ENGINE] Escuchando en {SERVER}:{PORT}")
+    logger.info(f"[ENGINE] Escuchando en {SERVER}:{PORT} (TLS={'ON' if TLS_ENABLED else 'OFF'})")
 
     while True:
         conn, addr = server.accept()
+
+        if TLS_ENABLED:
+            try:
+                conn = _tls_ctx.wrap_socket(conn, server_side=True)
+            except ssl.SSLError as e:
+                logger.warning(f"[ENGINE] Handshake TLS fallido desde {addr}: {e}")
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                continue
+
         threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
 
 
