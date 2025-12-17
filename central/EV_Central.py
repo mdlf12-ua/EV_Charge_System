@@ -5,11 +5,19 @@ import mysql.connector
 import os
 import time
 import sys
+import ssl
+
 import json
 from kafka import KafkaProducer
 from kafka import KafkaConsumer
 import logging, os
 from logging.handlers import RotatingFileHandler
+
+TLS_CERT = os.getenv("TLS_CERT", "/app/certs/certServ.pem")
+TLS_ENABLED = os.getenv("TLS_ENABLED", "1") == "1"
+
+_tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+_tls_ctx.load_cert_chain(TLS_CERT, TLS_CERT)
 
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -110,7 +118,7 @@ def insertar_cps_en_bd():
     DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
     DB_NAME = os.getenv("DB_NAME", "database")
 
-    # Conectar a la base de datos
+    # 1) Conectar a la BD
     try:
         conexion = mysql.connector.connect(
             host=DB_HOST,
@@ -119,58 +127,91 @@ def insertar_cps_en_bd():
             password=DB_PASSWORD,
             database=DB_NAME
         )
-        log.info("Conectado a MySQL para insertar los CPs.")
     except mysql.connector.Error as err:
         log.error(f"[CENTRAL] No se pudo conectar a MySQL: {err}")
         return
 
     cursor = conexion.cursor()
 
-    # Copia segura para iterar sin problemas si se modifica central_cps en otros hilos
+    # 2) Copia segura del diccionario (evita problemas con hilos)
     with lock:
         cps_items = list(central_cps.items())
 
     for cp_id, cp_info in cps_items:
         try:
-            ubicacion = cp_info.get("Ubicacion")
+            # --- Datos en memoria ---
+            mem_ubicacion = cp_info.get("Ubicacion")
+            mem_estado = cp_info.get("ESTADO")
 
-            # 1) Consultar si la ciudad está en alerta (WeatherAlert)
+            # 3) Leemos la ubicación REAL que tiene la BD (para NO pisarla)
+            db_ubicacion = mem_ubicacion
+            cursor.execute("SELECT Ubicacion FROM ChargingPoint WHERE ID = %s", (cp_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                db_ubicacion = row[0]  # manda la BD
+
+            # 4) ¿Está esa ciudad en alerta? (tabla WeatherAlert)
             alerta_meteo = 0
-            if ubicacion:
+            if db_ubicacion:
                 cursor.execute(
                     "SELECT alert_active FROM WeatherAlert WHERE location = %s",
-                    (ubicacion,)
+                    (db_ubicacion,)
                 )
-                row = cursor.fetchone()
-                if row is not None:
-                    alerta_meteo = int(row[0])
+                row_alert = cursor.fetchone()
+                if row_alert is not None:
+                    alerta_meteo = int(row_alert[0])
 
-            # 2) Si hay alerta y el CP NO está ya parado/averiado/desconectado -> mandar STOP una vez
-            # (Esto lo hace CENTRAL, que es quien manda sobre ESTADO y órdenes)
+            # 5) STOP si hay alerta y procede (Central manda órdenes)
             if alerta_meteo == 1:
-                with lock:
-                    estado_actual = central_cps.get(cp_id, {}).get("ESTADO")
-
-                if estado_actual not in ("PARADO", "AVERIADO", "DESCONECTADO"):
-                    log.warning(f"[CENTRAL] Ciudad en alerta ({ubicacion}). Parando CP {cp_id} (estado={estado_actual})")
+                # NO paramos si ya está parado/averiado/desconectado o suministrando
+                if mem_estado not in ("PARADO", "AVERIADO", "DESCONECTADO", "SUMINISTRANDO"):
+                    log.warning(
+                        f"[CENTRAL] Meteo ALERTA en '{db_ubicacion}'. STOP a CP {cp_id} (estado={mem_estado})"
+                    )
                     send_order_cp(cp_id, "STOP")
 
+                    # reflejamos el estado en memoria
                     with lock:
                         if cp_id in central_cps:
                             central_cps[cp_id]["ESTADO"] = "PARADO"
-                            estado_actual = "PARADO"  # para guardar lo correcto en BD
+                            mem_estado = "PARADO"
 
-            # 3) Guardar CP en BD incluyendo ALERTA_METEO
-            # Re-leemos el estado final desde memoria (por si lo acabamos de cambiar)
-            with lock:
-                estado_final = central_cps.get(cp_id, {}).get("ESTADO", cp_info.get("ESTADO"))
+            # 6) RECOVER si NO hay alerta, pero la BD decía que estaba en alerta meteo (ALERTA_METEO=1)
+            if alerta_meteo == 0:
+                cursor.execute(
+                    "SELECT ALERTA_METEO, ESTADO FROM ChargingPoint WHERE ID = %s",
+                    (cp_id,)
+                )
+                row_db = cursor.fetchone()
 
+                if row_db is not None:
+                    alerta_db = int(row_db[0] or 0)
+                    estado_db = row_db[1]
+
+                    # Solo recuperamos si estaba parado POR meteo
+                    if alerta_db == 1 and estado_db == "PARADO":
+                        with lock:
+                            estado_actual = central_cps.get(cp_id, {}).get("ESTADO")
+
+                        # recuperamos SOLO si también lo vemos PARADO en memoria
+                        if estado_actual == "PARADO":
+                            log.info(
+                                f"[CENTRAL] Recuperación meteo en '{db_ubicacion}'. CONTINUE a CP {cp_id}"
+                            )
+                            send_order_cp(cp_id, "CONTINUE")
+
+                            with lock:
+                                if cp_id in central_cps:
+                                    central_cps[cp_id]["ESTADO"] = "ACTIVADO"
+                                    mem_estado = "ACTIVADO"
+
+            # 7) Insert/Update en BD
+            # Ubicacion NO se pisa: NO aparece en el UPDATE
             cursor.execute("""
                 INSERT INTO ChargingPoint
                     (ID, Ubicacion, PRECIO, ESTADO, CONDUCTOR_ID, CONSUMO_KW, IMPORTE_EU, ALERTA_METEO)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
-                    Ubicacion = VALUES(Ubicacion),
                     PRECIO = VALUES(PRECIO),
                     ESTADO = VALUES(ESTADO),
                     CONDUCTOR_ID = VALUES(CONDUCTOR_ID),
@@ -178,10 +219,10 @@ def insertar_cps_en_bd():
                     IMPORTE_EU = VALUES(IMPORTE_EU),
                     ALERTA_METEO = VALUES(ALERTA_METEO)
             """, (
-                cp_info.get("ID"),
-                ubicacion,
+                cp_id,
+                db_ubicacion,
                 cp_info.get("PRECIO"),
-                estado_final,
+                mem_estado,
                 cp_info.get("CONDUCTOR_ID"),
                 cp_info.get("CONSUMO_KW"),
                 cp_info.get("IMPORTE_EU"),
@@ -189,15 +230,25 @@ def insertar_cps_en_bd():
             ))
 
             conexion.commit()
-            log.info(f"[CENTRAL] CP {cp_info.get('ID')} insertado/actualizado en BD (alerta_meteo={alerta_meteo}).")
+            log.info(
+                f"[CENTRAL] CP {cp_id} sync OK (ubicacion='{db_ubicacion}', alerta_meteo={alerta_meteo}, estado='{mem_estado}')"
+            )
 
         except mysql.connector.Error as e:
-            log.error(f"[CENTRAL] Error al insertar/actualizar el CP {cp_info.get('ID')}: {e}")
+            log.error(f"[CENTRAL] Error SQL insert/update CP {cp_id}: {e}")
         except Exception as e:
-            log.error(f"[CENTRAL] Error inesperado en insertar_cps_en_bd para CP {cp_info.get('ID')}: {e}")
+            log.error(f"[CENTRAL] Error inesperado insert/update CP {cp_id}: {e}")
 
-    conexion.close()
-    log.info("[CENTRAL] Todos los CPs han sido insertados/actualizados en la base de datos.")
+    try:
+        cursor.close()
+    except Exception:
+        pass
+    try:
+        conexion.close()
+    except Exception:
+        pass
+
+
 
 #Función que utilizara cada hilo para antender a un cliente
 def handle_CP(conn, addr):
@@ -297,34 +348,50 @@ def handle_CP(conn, addr):
 
     conn.close()
 def start_socket():
-    #El servidor escucha:
+    # El servidor escucha:
     server.listen()
     log.info(f"[LISTENING] Servidor a la escucha en {SERVER}")
-    #####
-    #Active_count() son los objetos thread activos, es decir cada conexion
-    CONEX_ACTIVAS = threading.active_count()-1
-    log.info(CONEX_ACTIVAS)
-    ##########
 
-    #Bucle Infinito para escuchar al cliente
+    # Active_count() son los objetos thread activos (cada conexion)
+    CONEX_ACTIVAS = threading.active_count() - 1
+    log.info(CONEX_ACTIVAS)
+
     while True:
-        #Esperamos una conexion, conn es el socket del cliente, addr la address
+        # Aceptamos conexión TCP (raw)
         conn, addr = server.accept()
-        #calculamos de nuevo los thread activos
+
+        # --- Envolver con TLS (mTLS) si está activado ---
+        if TLS_ENABLED:
+            try:
+                conn = _tls_ctx.wrap_socket(conn, server_side=True)
+            except ssl.SSLError as e:
+                log.warning(f"[CENTRAL] Handshake TLS fallido desde {addr}: {e}")
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                continue
+
+        # Recalculamos threads activos
         CONEX_ACTIVAS = threading.active_count()
-        #Si no hemos sobrepasado el maximo numero de conexiones, podemos crear el thread
-        if (CONEX_ACTIVAS <= MAX_CONEXIONES):
-            #Creamos el Thread, target: la funcion o protocolo que atendera al cliente, args: los argumentos de la funcion 
-            thread = threading.Thread(target=handle_CP, args=(conn, addr))
+
+        # Si no hemos sobrepasado el máximo número de conexiones, creamos el thread
+        if CONEX_ACTIVAS <= MAX_CONEXIONES:
+            thread = threading.Thread(target=handle_CP, args=(conn, addr), daemon=True)
             thread.start()
             log.info(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
             log.info(f"CONEXIONES RESTANTES PARA CERRAR EL SERVICIO {MAX_CONEXIONES - CONEX_ACTIVAS}")
         else:
             log.warning("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
-            conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
-            conn.close()
-            CONEX_ACTUALES = threading.active_count()-1
-        
+            try:
+                conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 def inicia_kafka_producer(kafka_broker,max_retries=10, delay=5):
 
