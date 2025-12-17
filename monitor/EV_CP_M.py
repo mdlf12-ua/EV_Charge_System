@@ -1,12 +1,11 @@
 import socket
 import threading
 import time
+import os
+import ssl
 import sys
 
-FORMAT = 'utf-8'
-HEADER = 64
-FIN = "FIN"
-HEALTHSTATUS_TIEMPO = 1 #(segundos)
+HEALTHSTATUS_TIEMPO = 1
 
 monitor_state = {
     "cp_id": None,
@@ -14,8 +13,33 @@ monitor_state = {
     "averiado": False,
     "conocido": False
 }
+
+
+FORMAT = "utf-8"
+HEADER = 64
+
+TLS_ENABLED = os.getenv("TLS_ENABLED", "1") == "1"
+TLS_CA = os.getenv("TLS_CA", "/app/certs/certServ.pem")
+
+def build_tls_client_context_engine() -> ssl.SSLContext:
+    cafile = TLS_CA
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+    ctx.check_hostname = False          # en docker/IP normalmente no cuadra CN
+    ctx.verify_mode = ssl.CERT_REQUIRED # valida cert del servidor (self-signed OK si está en cafile)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
+def send_msg(sock: socket.socket, msg: str):
+    payload = msg.encode(FORMAT)
+    header = str(len(payload)).encode(FORMAT)
+    header += b" " * (HEADER - len(header))
+    sock.sendall(header)
+    sock.sendall(payload)
+
+
 class EngineConnector():
-    def __init__(self,ip,port,cp_id):
+    def __init__(self, ip, port, cp_id):
         self.ip = ip
         self.puerto = port
         self.id = cp_id
@@ -23,20 +47,33 @@ class EngineConnector():
         self.thread = None
         self.lock = threading.Lock()
         self.connected = threading.Event()
+        self.tls_ctx = build_tls_client_context_engine() if TLS_ENABLED else None
 
     def start(self):
         if self.thread and self.thread.is_alive():
-                    return
+            return
         self.thread = threading.Thread(target=self.try_connect_engine, daemon=True)
         self.thread.start()
-    def connect_engine_once(self):
-        print(f"[MONITOR] Conectando al Engine ({self.ip}:{self.puerto})...")
-        engine_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        engine_socket.connect((self.ip, self.puerto))
 
-        send_msg(engine_socket, f"CP_ID:{self.id}")
+    def connect_engine_once(self):
+        print(f"[MONITOR] Conectando al Engine ({self.ip}:{self.puerto}){' por TLS' if TLS_ENABLED else ''}...")
+
+        raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        raw.settimeout(5)
+        raw.connect((self.ip, self.puerto))
+
+        if TLS_ENABLED:
+            # SNI: usamos el hostname del servicio docker (engine1, engine2, etc.)
+            tls_sock = self.tls_ctx.wrap_socket(raw, server_hostname=self.ip)
+            tls_sock.settimeout(5)
+            s = tls_sock
+        else:
+            s = raw
+
+        send_msg(s, f"CP_ID:{self.id}")
         print(f"[MONITOR] ID {self.id} enviada al Engine.")
-        return engine_socket
+        return s
+
     def try_connect_engine(self):
         while True:
             try:
@@ -45,6 +82,7 @@ class EngineConnector():
                 with self.lock:
                     self.socket = socket_temp
                 self.connected.set()
+
                 while self.connected.is_set():
                     time.sleep(1)
 
@@ -59,8 +97,21 @@ class EngineConnector():
                     self.socket = None
                 print(f"[MONITOR] No se pudo conectar al engine: {e}. Reintentando en 5s...")
                 time.sleep(5)
+
+TLS_CERT = os.getenv("TLS_CERT", "/app/certs/certServ.pem")
+
+def build_tls_client_context() -> ssl.SSLContext:
+    cafile = os.getenv("TLS_CA", "/app/certs/certServ.pem")
+
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+    ctx.check_hostname = False          # simplifica (en docker/ip no cuadra CN)
+    ctx.verify_mode = ssl.CERT_REQUIRED # valida que es "el server" correcto
+
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
 class CentralConnector():
-    def __init__(self,ip,port,cp_id):
+    def __init__(self, ip, port, cp_id):
         self.ip = ip
         self.puerto = port
         self.id = cp_id
@@ -68,35 +119,44 @@ class CentralConnector():
         self.thread = None
         self.lock = threading.Lock()
         self.connected = threading.Event()
+        self.tls_ctx = build_tls_client_context()
 
     def start(self):
         if self.thread and self.thread.is_alive():
-                    return
+            return
         self.thread = threading.Thread(target=self.try_connect_central, daemon=True)
         self.thread.start()
+
     def connect_central_once(self):
         global monitor_state
-        central_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print(f"[MONITOR]: Intentando conectar a la Central ({self.ip}:{self.puerto})...")
-        central_socket.connect((self.ip, self.puerto))
-        print("[MONITOR] Conectado a Central")
 
-        # construir mensaje inicial con monitor_state
+        print(f"[MONITOR]: Intentando conectar a la Central ({self.ip}:{self.puerto}) por TLS...")
+
+        raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        raw.settimeout(5)
+        raw.connect((self.ip, self.puerto))
+        tls_sock = self.tls_ctx.wrap_socket(raw, server_hostname=self.ip)
+        tls_sock.settimeout(5)
+
+        print("[MONITOR] Conectado a Central (TLS)")
+
         estado_str = "OK" if not monitor_state["averiado"] else "KO"
         msg_inicial = f"{self.id} {monitor_state['ubicacion']} {estado_str} 0.30"
-        send_msg(central_socket, msg_inicial)
-
+        send_msg(tls_sock, msg_inicial)
         print(f"[MONITOR] Información inicial enviada: {msg_inicial}")
 
-        return central_socket
+        return tls_sock
+
+
     def try_connect_central(self):
         while True:
             try:
                 socket_temp = self.connect_central_once()
-                print("[MONITOR] Socket Central Conectado")
+                print("[MONITOR] Socket Central Conectado (TLS)")
                 with self.lock:
                     self.socket = socket_temp
                 self.connected.set()
+
                 while self.connected.is_set():
                     time.sleep(1)
 
@@ -109,24 +169,35 @@ class CentralConnector():
                         except:
                             pass
                     self.socket = None
-                print(f"[MONITOR] No se pudo conectar a Central: {e}. Reintentando en 5s...")
+                print(f"[MONITOR] No se pudo conectar a central (TLS): {e}. Reintentando en 5s...")
                 time.sleep(5)
-                
-def send_msg(sock, msg):
-    message = msg.encode(FORMAT)
-    msg_length = len(message)
-    send_length = str(msg_length).encode(FORMAT)
-    send_length += b' ' * (HEADER - len(send_length))
-    sock.sendall(send_length)
-    sock.sendall(message)
 
 
-def receive_msg(socket):
-    try:
-        length = int(socket.recv(HEADER).decode(FORMAT).strip())
-        return socket.recv(length).decode(FORMAT)
-    except:
+def recvall(sock: socket.socket, n: int) -> bytes | None:
+    data = b""
+    while len(data) < n:
+        try:
+            chunk = sock.recv(n - len(data))
+        except (socket.timeout, OSError):
+            return None
+        if not chunk:
+            return None
+        data += chunk
+    return data
+
+def receive_msg(sock: socket.socket) -> str | None:
+    header_bytes = recvall(sock, HEADER)
+    if not header_bytes:
         return None
+    try:
+        length = int(header_bytes.decode(FORMAT).strip())
+    except ValueError:
+        return None
+
+    body = recvall(sock, length)
+    if not body:
+        return None
+    return body.decode(FORMAT)
 
 
 def noti_averia(central_socket, motivo, timeout=5):
@@ -252,6 +323,76 @@ def healthstatus_periodico(engine_socket, central_socket):
             # aquí no hace falta re-notificar si ya estabas en KO; set_averia se encarga
             set_averia(monitor_state, central_socket, True, motivo_ko="Error en healthcheck")
             time.sleep(HEALTHSTATUS_TIEMPO)
+def enviar_info_a_central(central_socket):
+    """
+    Reenvía a Central el mensaje estándar:
+    "<cp_id> <ubicacion> <OK/KO> <precio>"
+    Central ya lo parsea así.
+    """
+    if not central_socket.connected.wait(3):
+        print("[MONITOR] Central no conectada todavía.")
+        return False
+
+    with central_socket.lock:
+        s = central_socket.socket
+
+    if s is None:
+        print("[MONITOR] Central socket es None.")
+        return False
+
+    estado_str = "OK" if not monitor_state["averiado"] else "KO"
+    msg = f"{monitor_state['cp_id']} {monitor_state['ubicacion']} {estado_str} 0.30"
+
+    try:
+        send_msg(s, msg)
+        print(f"[MONITOR] Info enviada a Central: {msg}")
+        return True
+    except Exception as e:
+        print(f"[MONITOR] Error enviando info a Central: {e}")
+        return False
+
+
+def menu_monitor(engine_socket, central_socket):
+    """
+    Menú interactivo para pruebas (cambiar ubicación).
+    """
+    while True:
+        print("\n============================")
+        print("    CP MONITOR (EV_CP_M)    ")
+        print("============================")
+        print(f" CP: {monitor_state['cp_id']}")
+        print(f" Ubicación actual: {monitor_state['ubicacion']}")
+        print(f" Averiado: {monitor_state['averiado']}")
+        print("============================")
+        print(" 1. Cambiar ubicación (ciudad)")
+        print(" 2. Reenviar info a Central")
+        print(" 0. Salir")
+        print("============================")
+
+        op = input(" Elige opción: ").strip()
+
+        if op == "1":
+            nueva = input(" Nueva ciudad: ").strip()
+            if not nueva:
+                print(" [MONITOR] Ciudad vacía, cancelado.")
+                continue
+
+            monitor_state["ubicacion"] = nueva
+            print(f"[MONITOR] Ubicación cambiada a: {nueva}")
+
+            # reenvía para que Central “vea” el cambio
+            enviar_info_a_central(central_socket)
+
+        elif op == "2":
+            enviar_info_a_central(central_socket)
+
+        elif op == "0":
+            print("[MONITOR] Saliendo...")
+            break
+
+        else:
+            print(" Opción no válida.")
+
 if __name__ == "__main__":
 
     if len(sys.argv) != 6:
@@ -272,8 +413,19 @@ if __name__ == "__main__":
 
 
 
-    engine_socket = EngineConnector(engine_ip, engine_port,cp_id)
+    engine_socket = EngineConnector(engine_ip, engine_port, cp_id)
     engine_socket.start()
+
     central_socket = CentralConnector(central_ip, central_port, cp_id)
     central_socket.start()
-    healthstatus_periodico(engine_socket, central_socket)
+
+    # Healthchecks en background
+    t_health = threading.Thread(
+        target=healthstatus_periodico,
+        args=(engine_socket, central_socket),
+        daemon=True
+    )
+    t_health.start()
+
+    # Menú en primer plano (para poder usar input)
+    menu_monitor(engine_socket, central_socket)
