@@ -157,6 +157,24 @@ def weather_loop():
 
     log.info("[EV_W] Hilo meteorológico detenido.")
 
+def change_cp_location(cp_id: str, new_location: str):
+    """
+    Pide a API_Central que cambie la ciudad de un CP en la BD.
+    """
+    url = f"{API_CENTRAL_BASE}/cps/{cp_id}/location"
+    payload = {"location": new_location}
+
+    try:
+        resp = requests.post(url, json=payload, timeout=5)
+        if resp.status_code == 200:
+            log.info(f"[EV_W] CP {cp_id} cambiado a ciudad '{new_location}' via API_Central")
+            print(f"  [OK] CP {cp_id} ahora está en '{new_location}'")
+        else:
+            log.warning(f"[EV_W] Error HTTP {resp.status_code} cambiando CP {cp_id}: {resp.text}")
+            print(f"  [ERROR] HTTP {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log.error(f"[EV_W] Error conectando con API_Central para cambiar CP {cp_id}: {e}")
+        print(f"  [ERROR] No se pudo contactar con API_Central: {e}")
 
 # ----------------- MENÚ INTERACTIVO ----------------- #
 
@@ -168,6 +186,7 @@ def mostrar_menu():
     print(" 2. Añadir localización")
     print(" 3. Eliminar localización")
     print(" 4. Vaciar todas las localizaciones")
+    print(" 5. Cambiar ciudad de un CP (Ubicacion en BD)")
     print(" 0. Salir")
     print("============================")
 
@@ -220,6 +239,18 @@ def menu_loop():
                     locations.clear()
                     alert_state.clear()
                 print("  [EV_W] Todas las localizaciones han sido eliminadas.")
+        elif opcion == "5":
+            cp_id = input(" ID del CP (ej: CP001): ").strip()
+            if not cp_id:
+                print("  [ERROR] CP ID vacío.")
+                continue
+
+            new_loc = input(" Nueva ciudad/localización: ").strip()
+            if not new_loc:
+                print("  [ERROR] Localización vacía.")
+                continue
+
+            change_cp_location(cp_id, new_loc)
 
         elif opcion == "0":
             print("  [EV_W] Saliendo de EV_W...")
