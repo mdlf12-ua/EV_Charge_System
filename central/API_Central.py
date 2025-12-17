@@ -179,6 +179,41 @@ def weather_recover():
     except Exception as e:
         log.error(f"Error en weather_recover para {location}: {e}")
         return jsonify({"error": "Error interno registrando recuperación"}), 500
+    
+@app.route("/cps/<cp_id>/location", methods=["POST"])
+def set_cp_location(cp_id):
+    data = request.get_json(silent=True) or {}
+    location = data.get("location")
+
+    if not location:
+        return jsonify({"error": "location es obligatorio"}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "UPDATE ChargingPoint SET Ubicacion=%s WHERE ID=%s",
+            (location, cp_id)
+        )
+        conn.commit()
+
+        afectados = cursor.rowcount
+        cursor.close()
+        conn.close()
+
+        log.info(f"[API_CENTRAL] Ubicacion cambiada: {cp_id} -> {location} (rows={afectados})")
+
+        return jsonify({
+            "status": "ok",
+            "cp_id": cp_id,
+            "location": location,
+            "rows": afectados
+        }), 200
+
+    except Exception as e:
+        log.error(f"Error cambiando ubicacion {cp_id}: {e}")
+        return jsonify({"error": "Error interno"}), 500
 
 
 if __name__ == "__main__":
