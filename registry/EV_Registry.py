@@ -222,8 +222,8 @@ def list_cps():
 if __name__ == "__main__":
     log.info(f"[REGISTRY] Iniciando en puerto {REGISTRY_PORT}")
 
-    CERT_FILE = "/app/certs/certServ.pem"
-    KEY_FILE  = "/app/certs/clave_privada_CA.pem"
+    CERT_FILE = "/app/certs/certificado_api_central.crt"
+    KEY_FILE  = "/app/certs/clave_privada_api_central.pem"
 
     log.info(f"[REGISTRY] API_Central: {API_CENTRAL_BASE}")
     app.run(
