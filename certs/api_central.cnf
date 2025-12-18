@@ -17,4 +17,7 @@ CN = api_central
 subjectAltName = @alt_names
 
 [ alt_names ]
-DNS.1 = api_central
+DNS.1 = api-central
+DNS.2 = api_central
+DNS.3 = localhost
+IP.1  = 127.0.0.1
