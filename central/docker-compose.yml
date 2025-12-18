@@ -69,7 +69,7 @@ services:
       dockerfile: Dockerfile
     environment:
       OPENWEATHER_API_KEY: "c469d40985c2772a191a871b666b842d"
-      API_CENTRAL_BASE: "https://192.168.1.35:8000"
+      API_CENTRAL_BASE: "https://api-central:8000"
       POLL_INTERVAL: 4
       CA_CERT: /app/certs/certificado_CA.crt
     command: ["python", "-u", "EV_W.py"]
