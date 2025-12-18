@@ -220,11 +220,16 @@ def set_cp_location(cp_id):
 
 @app.route("/registry/cp/<cp_id>", methods=["GET"])
 def get_registry_cp(cp_id):
-    """Consultar si existe un CP en el registro"""
+    """Consultar CP (tabla unificada)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM CPRegistry WHERE cp_id = %s", (cp_id,))
+        cursor.execute("""
+            SELECT ID, Ubicacion, ESTADO, token, encryption_key, 
+                   registrado, authenticated, fecha_registro, fecha_auth
+            FROM ChargingPoint 
+            WHERE ID = %s
+        """, (cp_id,))
         row = cursor.fetchone()
         cursor.close()
         conn.close()
@@ -241,12 +246,14 @@ def get_registry_cp(cp_id):
 
 @app.route("/registry/cp", methods=["POST"])
 def create_registry_cp():
-    """Crear nuevo CP en el registro"""
+    """
+    Crear nuevo CP en Registry (tabla unificada).
+    Solo para CPs que NO existen.
+    """
     data = request.get_json(silent=True) or {}
     cp_id = data.get("cp_id")
     ubicacion = data.get("ubicacion")
     token = data.get("token")
-    registrado = data.get("registrado", 1)
 
     if not cp_id or not ubicacion or not token:
         return jsonify({"error": "Faltan campos obligatorios"}), 400
@@ -255,16 +262,19 @@ def create_registry_cp():
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Estado inicial: REGISTRADO (aún no autenticado en Central)
         cursor.execute("""
-            INSERT INTO CPRegistry (cp_id, ubicacion, token, registrado)
-            VALUES (%s, %s, %s, %s)
-        """, (cp_id, ubicacion, token, registrado))
+            INSERT INTO ChargingPoint 
+                (ID, Ubicacion, token, registrado, authenticated, ESTADO, fecha_registro,
+                 PRECIO, CONSUMO_KW, IMPORTE_EU)
+            VALUES (%s, %s, %s, 1, 0, 'REGISTRADO', NOW(), 0.30, 0.0, 0.0)
+        """, (cp_id, ubicacion, token))
         
         conn.commit()
         cursor.close()
         conn.close()
 
-        log.info(f"[API_CENTRAL] CP {cp_id} registrado en BD")
+        log.info(f"[API_CENTRAL] CP {cp_id} creado en BD con estado REGISTRADO")
         return jsonify({"status": "created", "cp_id": cp_id}), 201
 
     except Exception as e:
@@ -274,7 +284,7 @@ def create_registry_cp():
 
 @app.route("/registry/cp/<cp_id>", methods=["PUT"])
 def update_registry_cp(cp_id):
-    """Actualizar CP en el registro"""
+    """Actualizar CP (tabla unificada)"""
     data = request.get_json(silent=True) or {}
 
     try:
@@ -285,14 +295,30 @@ def update_registry_cp(cp_id):
         valores = []
         
         if "ubicacion" in data:
-            campos.append("ubicacion = %s")
+            campos.append("Ubicacion = %s")
             valores.append(data["ubicacion"])
         if "token" in data:
-            campos.append("token = %s")
-            valores.append(data["token"])
+            if data["token"] is None:
+                campos.append("token = NULL")
+            else:
+                campos.append("token = %s")
+                valores.append(data["token"])
         if "registrado" in data:
             campos.append("registrado = %s")
             valores.append(data["registrado"])
+            # Si se da de baja, resetear autenticación
+            if data["registrado"] == 0:
+                campos.append("authenticated = 0")
+                campos.append("encryption_key = NULL")
+        if "authenticated" in data:
+            campos.append("authenticated = %s")
+            valores.append(data["authenticated"])
+        if "encryption_key" in data:
+            if data["encryption_key"] is None:
+                campos.append("encryption_key = NULL")
+            else:
+                campos.append("encryption_key = %s")
+                valores.append(data["encryption_key"])
 
         if not campos:
             cursor.close()
@@ -300,7 +326,7 @@ def update_registry_cp(cp_id):
             return jsonify({"error": "No hay campos para actualizar"}), 400
 
         valores.append(cp_id)
-        query = f"UPDATE CPRegistry SET {', '.join(campos)} WHERE cp_id = %s"
+        query = f"UPDATE ChargingPoint SET {', '.join(campos)} WHERE ID = %s"
         
         cursor.execute(query, valores)
         
@@ -313,7 +339,7 @@ def update_registry_cp(cp_id):
         cursor.close()
         conn.close()
 
-        log.info(f"[API_CENTRAL] CP {cp_id} actualizado en BD")
+        log.info(f"[API_CENTRAL] CP {cp_id} actualizado")
         return jsonify({"status": "updated", "cp_id": cp_id}), 200
 
     except Exception as e:
@@ -323,7 +349,10 @@ def update_registry_cp(cp_id):
 
 @app.route("/registry/authenticate", methods=["POST"])
 def authenticate_registry_cp():
-    """Validar token de autenticación de un CP"""
+    """
+    Validar token de autenticación de un CP.
+    Esto lo usa Central para verificar que el token de Registry es válido.
+    """
     data = request.get_json(silent=True) or {}
     cp_id = data.get("cp_id")
     token = data.get("token")
@@ -336,8 +365,9 @@ def authenticate_registry_cp():
         cursor = conn.cursor(dictionary=True)
         
         cursor.execute("""
-            SELECT * FROM CPRegistry 
-            WHERE cp_id = %s AND token = %s AND registrado = 1
+            SELECT ID, Ubicacion, registrado, authenticated
+            FROM ChargingPoint 
+            WHERE ID = %s AND token = %s AND registrado = 1
         """, (cp_id, token))
         
         row = cursor.fetchone()
@@ -345,28 +375,32 @@ def authenticate_registry_cp():
         conn.close()
 
         if row:
-            log.info(f"[API_CENTRAL] Autenticación exitosa: {cp_id}")
+            log.info(f"[API_CENTRAL] Token válido para CP {cp_id}")
             return jsonify({
                 "authenticated": True,
                 "cp_id": cp_id,
-                "ubicacion": row["ubicacion"]
+                "ubicacion": row["Ubicacion"]
             }), 200
         else:
-            log.warning(f"[API_CENTRAL] Autenticación fallida: {cp_id}")
+            log.warning(f"[API_CENTRAL] Token inválido para CP {cp_id}")
             return jsonify({"authenticated": False}), 401
 
     except Exception as e:
-        log.error(f"Error autenticando CP {cp_id}: {e}")
+        log.error(f"Error validando token CP {cp_id}: {e}")
         return jsonify({"error": "Error interno"}), 500
 
 
 @app.route("/registry/cps", methods=["GET"])
 def list_registry_cps():
-    """Listar todos los CPs registrados"""
+    """Listar todos los CPs"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT cp_id, ubicacion, registrado FROM CPRegistry")
+        cursor.execute("""
+            SELECT ID, Ubicacion, ESTADO, registrado, authenticated,
+                   fecha_registro, fecha_auth
+            FROM ChargingPoint
+        """)
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -374,9 +408,10 @@ def list_registry_cps():
         return jsonify(rows), 200
 
     except Exception as e:
-        log.error(f"Error listando CPs registry: {e}")
+        log.error(f"Error listando CPs: {e}")
         return jsonify({"error": "Error interno"}), 500
-
+    
+    
 if __name__ == "__main__":
     log.info(f"[API_CENTRAL] Iniciando en puerto {REST_PORT}")
     # host=0.0.0.0 para que sea accesible desde fuera del contenedor

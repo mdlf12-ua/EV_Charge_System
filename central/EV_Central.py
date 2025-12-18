@@ -27,7 +27,7 @@ def crear_cipher_desde_key(encryption_key: str):
 
 def obtener_encryption_key_cp(cp_id):
     """
-    Obtiene la clave de cifrado de un CP desde la BD.
+    Obtiene la clave de cifrado de un CP autenticado.
     """
     DB_HOST = os.getenv("DB_HOST", "mysql")
     DB_PORT = int(os.getenv("DB_PORT", 3306))
@@ -45,8 +45,8 @@ def obtener_encryption_key_cp(cp_id):
         cursor = conexion.cursor(dictionary=True)
         cursor.execute("""
             SELECT encryption_key 
-            FROM CPAuthentication 
-            WHERE cp_id = %s AND authenticated = 1
+            FROM ChargingPoint 
+            WHERE ID = %s AND authenticated = 1
         """, (cp_id,))
         
         resultado = cursor.fetchone()
@@ -151,7 +151,7 @@ def send_msg_central(conn, msg):
 
 def validar_registro_cp(cp_id):
     """
-    Verifica que el CP esté registrado en CPRegistry antes de permitir autenticación
+    Verifica que el CP esté REGISTRADO (registrado=1) antes de permitir autenticación.
     """
     DB_HOST = os.getenv("DB_HOST", "mysql")
     DB_PORT = int(os.getenv("DB_PORT", 3306))
@@ -168,8 +168,9 @@ def validar_registro_cp(cp_id):
         
         cursor = conexion.cursor(dictionary=True)
         cursor.execute("""
-            SELECT * FROM CPRegistry 
-            WHERE cp_id = %s AND registrado = 1
+            SELECT ID, Ubicacion, registrado, authenticated
+            FROM ChargingPoint 
+            WHERE ID = %s AND registrado = 1
         """, (cp_id,))
         
         resultado = cursor.fetchone()
@@ -177,7 +178,7 @@ def validar_registro_cp(cp_id):
         conexion.close()
         
         if resultado:
-            return True, resultado.get("ubicacion")
+            return True, resultado.get("Ubicacion")
         else:
             return False, None
             
@@ -188,7 +189,10 @@ def validar_registro_cp(cp_id):
 
 def autenticar_cp(cp_id, token_registry):
     """
-    Autentica un CP verificando su token de Registry y generando clave de cifrado
+    Autentica un CP:
+    1. Verifica token de Registry
+    2. Genera clave de cifrado única
+    3. Actualiza estado a ACTIVADO y authenticated=1
     """
     DB_HOST = os.getenv("DB_HOST", "mysql")
     DB_PORT = int(os.getenv("DB_PORT", 3306))
@@ -205,10 +209,11 @@ def autenticar_cp(cp_id, token_registry):
         
         cursor = conexion.cursor(dictionary=True)
         
-        # 1. Validar token en Registry
+        # 1. Validar token en tabla unificada
         cursor.execute("""
-            SELECT * FROM CPRegistry 
-            WHERE cp_id = %s AND token = %s AND registrado = 1
+            SELECT ID, Ubicacion, token, registrado, authenticated
+            FROM ChargingPoint 
+            WHERE ID = %s AND token = %s AND registrado = 1
         """, (cp_id, token_registry))
         
         resultado = cursor.fetchone()
@@ -216,28 +221,40 @@ def autenticar_cp(cp_id, token_registry):
         if not resultado:
             cursor.close()
             conexion.close()
-            log.warning(f"[CENTRAL] Autenticación fallida: CP {cp_id} no registrado o token inválido")
+            log.warning(f"[CENTRAL] Auth fallida: CP {cp_id} no registrado o token inválido")
             return False, None
         
-        # 2. Generar clave de cifrado única para este CP
-        import secrets
-        encryption_key = secrets.token_hex(16)
+        # Verificar si YA está autenticado (para evitar duplicados)
+        if resultado.get("authenticated") == 1:
+            log.warning(f"[CENTRAL] CP {cp_id} YA está autenticado")
+            # Devolver la clave existente
+            cursor.execute("""
+                SELECT encryption_key FROM ChargingPoint WHERE ID = %s
+            """, (cp_id,))
+            row = cursor.fetchone()
+            cursor.close()
+            conexion.close()
+            return True, row.get("encryption_key")
         
-        # 3. Guardar en tabla de autenticación
+        # 2. Generar clave de cifrado única
+        import secrets
+        encryption_key = secrets.token_hex(32)
+        
+        # 3. Actualizar: authenticated=1, encryption_key, ESTADO=ACTIVADO
         cursor.execute("""
-            INSERT INTO CPAuthentication (cp_id, encryption_key, authenticated)
-            VALUES (%s, %s, 1)
-            ON DUPLICATE KEY UPDATE
-                encryption_key = VALUES(encryption_key),
+            UPDATE ChargingPoint 
+            SET encryption_key = %s,
                 authenticated = 1,
-                fecha_auth = CURRENT_TIMESTAMP
-        """, (cp_id, encryption_key))
+                ESTADO = 'ACTIVADO',
+                fecha_auth = NOW()
+            WHERE ID = %s
+        """, (encryption_key, cp_id))
         
         conexion.commit()
         cursor.close()
         conexion.close()
         
-        log.info(f"[CENTRAL] CP {cp_id} autenticado exitosamente. Clave de cifrado generada.")
+        log.info(f"[CENTRAL] CP {cp_id} autenticado → ACTIVADO")
         return True, encryption_key
         
     except Exception as e:
@@ -245,9 +262,11 @@ def autenticar_cp(cp_id, token_registry):
         return False, None
 
 
+
 def revocar_clave_cp(cp_id):
     """
-    Revoca la clave de cifrado de un CP específico (opción del menú)
+    Revoca la clave de cifrado: authenticated=0, encryption_key=NULL
+    El CP deberá autenticarse de nuevo (pero mantiene registrado=1)
     """
     DB_HOST = os.getenv("DB_HOST", "mysql")
     DB_PORT = int(os.getenv("DB_PORT", 3306))
@@ -265,28 +284,31 @@ def revocar_clave_cp(cp_id):
         cursor = conexion.cursor()
         
         cursor.execute("""
-            UPDATE CPAuthentication 
-            SET authenticated = 0
-            WHERE cp_id = %s
+            UPDATE ChargingPoint 
+            SET authenticated = 0,
+                encryption_key = NULL,
+                ESTADO = 'PARADO'
+            WHERE ID = %s
         """, (cp_id,))
         
         if cursor.rowcount == 0:
             cursor.close()
             conexion.close()
-            log.warning(f"[CENTRAL] CP {cp_id} no tiene autenticación para revocar")
+            log.warning(f"[CENTRAL] CP {cp_id} no existe")
             return False
         
         conexion.commit()
         cursor.close()
         conexion.close()
         
-        log.info(f"[CENTRAL] Clave de cifrado revocada para CP {cp_id}")
+        log.info(f"[CENTRAL] Clave revocada para CP {cp_id}")
         
-        # Poner el CP en estado PARADO
+        # Actualizar memoria
         with lock:
             if cp_id in central_cps:
                 central_cps[cp_id]["ESTADO"] = "PARADO"
         
+        # Enviar orden STOP
         send_order_cp(cp_id, "STOP")
         
         return True
@@ -296,8 +318,12 @@ def revocar_clave_cp(cp_id):
         return False
 
 
-def search_CP():
 
+def search_CP():
+    """
+    Carga CPs AUTENTICADOS desde la BD al arrancar Central.
+    Solo carga los que tienen authenticated=1
+    """
     DB_HOST = os.getenv("DB_HOST", "mysql")
     DB_PORT = int(os.getenv("DB_PORT", 3306))
     DB_USER = os.getenv("DB_USER", "usuario")
@@ -307,20 +333,24 @@ def search_CP():
     while True:
         try:
             conexion = mysql.connector.connect(
-                host=DB_HOST,
-                port=DB_PORT,
-                user=DB_USER,
-                password=DB_PASSWORD,
+                host=DB_HOST, port=DB_PORT,
+                user=DB_USER, password=DB_PASSWORD,
                 database=DB_NAME
             )
             log.info("Conectado a MySQL")
             break
         except mysql.connector.Error as err:
-            log.warning(f"No se pudo conectar a MySQL, reintentando en 5 segundos... ({err})")
+            log.warning(f"No se pudo conectar a MySQL, reintentando en 5s... ({err})")
             time.sleep(5)
 
     cursor = conexion.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM ChargingPoint")
+    
+    # Solo cargar CPs autenticados
+    cursor.execute("""
+        SELECT ID, Ubicacion, PRECIO, ESTADO, CONDUCTOR_ID, CONSUMO_KW, IMPORTE_EU
+        FROM ChargingPoint
+        WHERE authenticated = 1
+    """)
     rows = cursor.fetchall()
 
     for row in rows:
@@ -328,15 +358,14 @@ def search_CP():
             "ID": row["ID"],
             "Ubicacion": row["Ubicacion"],
             "PRECIO": row["PRECIO"],
-            "ESTADO": 'PARADO',
+            "ESTADO": row["ESTADO"],
             "CONDUCTOR_ID": row["CONDUCTOR_ID"],
             "CONSUMO_KW": row["CONSUMO_KW"],
             "IMPORTE_EU": row["IMPORTE_EU"]
         }
 
-
     conexion.close()
-    log.info(f"[CENTRAL] Cargados {len(central_cps)} CPs desde la BD.")
+    log.info(f"[CENTRAL] Cargados {len(central_cps)} CPs autenticados desde BD")
 
 def insertar_cps_en_bd():
     DB_HOST = os.getenv("DB_HOST", "mysql")

@@ -517,7 +517,18 @@ def menu_monitor(engine_socket, central_socket):
             if encryption_key:
                 print(" [MONITOR] ✓ CP autenticado y listo para operar")
                 
-                # Reconectar Engine con la nueva clave
+                # Notificar a Engine que ya estamos autenticados
+                if engine_socket.connected.is_set():
+                    with engine_socket.lock:
+                        s = engine_socket.socket
+                    if s:
+                        try:
+                            send_msg(s, f"AUTHENTICATED:{encryption_key}")
+                            print(" [MONITOR] ✓ Engine notificado de autenticación")
+                        except Exception as e:
+                            print(f" [MONITOR] Error notificando Engine: {e}")
+                
+                # Reconectar Engine con la nueva clave para futuras conexiones
                 engine_socket.connected.clear()
                 with engine_socket.lock:
                     if engine_socket.socket:

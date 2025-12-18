@@ -93,54 +93,67 @@ def handle_client(conn, addr):
 
     logger.info(f"[ENGINE] Nueva conexión desde {addr}")
 
-    # Esperamos mensaje de registro
+    # Esperamos mensaje de registro: "CP_ID:cp_id" o "CP_ID:cp_id:encryption_key"
     msg = receive_msg(conn)
     if not msg or not msg.startswith("CP_ID:"):
-        send_msg(conn, "ERROR: Debes enviar CP_ID:<id>")
+        send_msg(conn, "ERROR: Debes enviar CP_ID:<id> o CP_ID:<id>:<encryption_key>")
         conn.close()
         return
 
-    cp_id = msg.split(":", 1)[1].strip()
+    partes = msg.split(":", 2)
+    cp_id = partes[1].strip()
+    encryption_key = partes[2].strip() if len(partes) > 2 else None
+    
     cp_state["cp_id"] = cp_id
-    cp_state["status"] = "ACTIVADO"
-    cp_state["consumo_kw"]=0.0
-    cp_state["precio_kwh"]=PRECIO
-    cp_state["importe_euro"]=0.0
-    logger.info(f"[ENGINE] Registrado CP_ID = {cp_id}")
+    cp_state["consumo_kw"] = 0.0
+    cp_state["precio_kwh"] = PRECIO
+    cp_state["importe_euro"] = 0.0
+    
+    logger.info(f"[ENGINE] CP_ID = {cp_id}")
+    
+    # Verificar si tiene clave de cifrado (está autenticado)
+    if encryption_key:
+        logger.info(f"[ENGINE] CP autenticado con clave de cifrado")
+        cp_state["status"] = "ACTIVADO"
+        cp_state["authenticated"] = True
+    else:
+        logger.warning(f"[ENGINE] CP NO autenticado (sin clave de cifrado)")
+        cp_state["status"] = "REGISTRADO"  # Estado intermedio
+        cp_state["authenticated"] = False
+    
     send_msg(conn, "OK")
 
+    logger.info(f"[ENGINE] - Punto de Recarga {cp_id}")
+    logger.info("----------------------------------------")
+    logger.info(f"Socket Monitor: {SERVER}:{PORT}")
+    logger.info(f"Kafka Broker: {kafka_broker}")
+    logger.info(f"Estado: {cp_state['status']}")
+    logger.info(f"Autenticado: {cp_state['authenticated']}\n")
 
-
-    cp_state["cp_id"] = cp_id
-    cp_state["status"] = "ACTIVADO"
-
-    logger.info(f"[ENGINE] - Punto de Recarga {cp_id}\n")
-    logger.info("----------------------------------------\n")
-    logger.info(f"Socket Monitor: {SERVER}:{PORT}\n")
-    logger.info(f"Kafka Broker: {kafka_broker}\n")
-
-
+    # Iniciar Kafka
     iniciar_kafka_producer(kafka_broker)
     kafka_thread = threading.Thread(
         target=kafka_consumer_thread, 
         args=(kafka_broker, cp_id),
-        daemon=True #El daemon hace que cuando acabe el hilo se borre
+        daemon=True
     )
     kafka_thread.start()
 
-    logger.info(f"[ENGINE] Registrando CP en la central...\n")
-    send_to_kafka('cp-register', {
-        "cp_id": cp_id,
-        "status": "ACTIVADO",
-        "timestamp": time.time(),
-        "ubicacion": UBICACION,
-        "consumo_kw": cp_state["consumo_kw"],
-        "importe_euro":cp_state["importe_euro"],
-        "precio_kwh":cp_state["precio_kwh"]
-    })
-
-    # Ahora podemos iniciar Kafka
-    #iniciar_kafka(cp_id, kafka_broker)
+    # SOLO registrar en Central si está autenticado
+    if cp_state["authenticated"]:
+        logger.info(f"[ENGINE] Registrando CP autenticado en Central...\n")
+        send_to_kafka('cp-register', {
+            "cp_id": cp_id,
+            "status": "ACTIVADO",
+            "timestamp": time.time(),
+            "ubicacion": UBICACION,
+            "consumo_kw": cp_state["consumo_kw"],
+            "importe_euro": cp_state["importe_euro"],
+            "precio_kwh": cp_state["precio_kwh"]
+        })
+    else:
+        logger.warning(f"[ENGINE] CP NO autenticado - NO se registra en Central")
+        logger.warning(f"[ENGINE] Debe completar: Registro → Autenticación → Reconexión\n")
 
     # Bucle principal
     while True:
@@ -150,6 +163,26 @@ def handle_client(conn, addr):
 
         if msg == "HEALTHSTATUS":
             send_msg(conn, cp_state["health_status"])
+        
+        elif msg.startswith("AUTHENTICATED:"):
+            # Monitor notifica que se autenticó y envía la clave
+            _, new_encryption_key = msg.split(":", 1)
+            logger.info(f"[ENGINE] Recibida clave de autenticación del Monitor")
+            cp_state["authenticated"] = True
+            cp_state["status"] = "ACTIVADO"
+            
+            # AHORA SÍ, registrar en Central
+            logger.info(f"[ENGINE] Registrando CP autenticado en Central...\n")
+            send_to_kafka('cp-register', {
+                "cp_id": cp_id,
+                "status": "ACTIVADO",
+                "timestamp": time.time(),
+                "ubicacion": UBICACION,
+                "consumo_kw": cp_state["consumo_kw"],
+                "importe_euro": cp_state["importe_euro"],
+                "precio_kwh": cp_state["precio_kwh"]
+            })
+        
         elif msg == "STOP":
             cp_state["status"] = "PARADO"
             send_msg(conn, "OK")

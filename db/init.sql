@@ -1,13 +1,31 @@
-CREATE TABLE ChargingPoint (
-    ID           VARCHAR(20) PRIMARY KEY,
-    Ubicacion    VARCHAR(100),
-    PRECIO       DECIMAL(6,2),
-    ESTADO       ENUM('ACTIVADO','PARADO','SUMINISTRANDO','DESCONECTADO','AVERIADO','AUTORIZADO') NOT NULL,
+-- Tabla ÚNICA para toda la información del CP
+CREATE TABLE IF NOT EXISTS ChargingPoint (
+    -- Identificación
+    ID VARCHAR(50) PRIMARY KEY,
+    Ubicacion VARCHAR(100),
+    
+    -- Operación (datos dinámicos de Central)
+    PRECIO DECIMAL(6,2) DEFAULT 0.30,
+    ESTADO ENUM('REGISTRADO','ACTIVADO','PARADO','SUMINISTRANDO','DESCONECTADO','AVERIADO','AUTORIZADO') 
+        NOT NULL DEFAULT 'REGISTRADO',
     CONDUCTOR_ID VARCHAR(20),
-    CONSUMO_KW   DECIMAL(6,2),
-    IMPORTE_EU   DECIMAL(6,2),
-    ALERTA_METEO TINYINT(1) NOT NULL DEFAULT 0
+    CONSUMO_KW DECIMAL(6,2) DEFAULT 0.0,
+    IMPORTE_EU DECIMAL(6,2) DEFAULT 0.0,
+    ALERTA_METEO TINYINT(1) NOT NULL DEFAULT 0,
+    
+    -- Registro y Autenticación (datos de Registry)
+    token VARCHAR(64),              -- Token de Registry para autenticación inicial
+    encryption_key VARCHAR(64),     -- Clave de cifrado simétrico de Central
+    registrado TINYINT(1) DEFAULT 0,    -- 0=no registrado, 1=registrado en Registry
+    authenticated TINYINT(1) DEFAULT 0, -- 0=no autenticado, 1=autenticado en Central
+    
+    -- Auditoría
+    fecha_registro TIMESTAMP NULL,
+    fecha_auth TIMESTAMP NULL,
+    ultima_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+-- Tabla de alertas meteorológicas (se mantiene separada, es información externa)
 CREATE TABLE IF NOT EXISTS WeatherAlert (
     location VARCHAR(100) PRIMARY KEY,
     alert_active TINYINT(1) NOT NULL DEFAULT 0,
@@ -15,18 +33,9 @@ CREATE TABLE IF NOT EXISTS WeatherAlert (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS CPRegistry (
-    cp_id VARCHAR(50) PRIMARY KEY,
-    ubicacion VARCHAR(100) NOT NULL,
-    token VARCHAR(64) NOT NULL,
-    registrado TINYINT(1) DEFAULT 1,
-    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- Índices para consultas frecuentes
+CREATE INDEX idx_estado ON ChargingPoint(ESTADO);
+CREATE INDEX idx_ubicacion ON ChargingPoint(Ubicacion);
+CREATE INDEX idx_authenticated ON ChargingPoint(authenticated);
 
-CREATE TABLE IF NOT EXISTS CPAuthentication (
-    cp_id VARCHAR(50) PRIMARY KEY,
-    encryption_key VARCHAR(64) NOT NULL,
-    authenticated TINYINT(1) DEFAULT 1,
-    fecha_auth TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (cp_id) REFERENCES CPRegistry(cp_id)
-);
+
