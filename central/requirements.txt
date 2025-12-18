@@ -4,5 +4,3 @@ Flask
 requests
 cryptography
 Fernet
-hashlib
-base64

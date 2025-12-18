@@ -4,5 +4,3 @@ requests
 cryptography
 json
 Fernet
-hashlib
-base64
