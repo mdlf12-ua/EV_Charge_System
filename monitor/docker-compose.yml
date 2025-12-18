@@ -200,6 +200,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor2:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -216,6 +218,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor3:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -232,6 +236,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor4:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -248,6 +254,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor5:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -264,6 +272,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor6:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -280,6 +290,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor7:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -296,6 +308,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor8:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -312,6 +326,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor9:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -328,6 +344,8 @@ services:
       - ../certs:/app/certs:ro
 
   monitor10:
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile
