@@ -21,7 +21,6 @@ monitor_state = {
     "conocido": False
 }
 
-# Estado de autenticación COMPARTIDO con Engine
 auth_state = {
     "token": None,
     "encryption_key": None,
@@ -228,7 +227,6 @@ class CentralConnector():
 
         print("[MONITOR] Conectado a Central (TLS)")
 
-        # NO enviar info inicial aquí, esperar a autenticarse primero
         return tls_sock
 
     def try_connect_central(self):

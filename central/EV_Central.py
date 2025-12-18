@@ -462,7 +462,6 @@ def insertar_cps_en_bd():
                                     mem_estado = "ACTIVADO"
 
             # 7) Insert/Update en BD
-            # Ubicacion NO se pisa: NO aparece en el UPDATE
             cursor.execute("""
                 INSERT INTO ChargingPoint
                     (ID, Ubicacion, PRECIO, ESTADO, CONDUCTOR_ID, CONSUMO_KW, IMPORTE_EU, ALERTA_METEO)

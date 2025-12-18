@@ -10,7 +10,6 @@ app = Flask(__name__)
 
 @app.get("/api/cps")
 def proxy_cps():
-    # Si es HTTPS, verifica con tu CA (si existe). Si es HTTP, verify no aplica.
     if API_CENTRAL_BASE.lower().startswith("https://"):
         verify = CA_CERT if os.path.exists(CA_CERT) else True
     else:

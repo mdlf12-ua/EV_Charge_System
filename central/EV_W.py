@@ -12,7 +12,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 log = logging.getLogger("EV_W")
 log.setLevel(logging.INFO)
-log.propagate = False  # no propagar al root
+log.propagate = False
 
 fh = RotatingFileHandler(
     os.path.join(LOG_DIR, "ev_w.log"),
@@ -65,7 +65,7 @@ def get_temperature(city: str):
         resp = requests.get(OPENWEATHER_URL, params=params, timeout=5)
         resp.raise_for_status()
         data = resp.json()
-        temp = data["main"]["temp"]  # ºC
+        temp = data["main"]["temp"] 
         return float(temp)
     except Exception as e:
         log.error(f"[EV_W] Error obteniendo temperatura para {city}: {e}")

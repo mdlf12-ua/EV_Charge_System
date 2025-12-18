@@ -14,7 +14,6 @@ TLS_CERT = os.getenv("TLS_CERT", "/app/certs/certServ.pem")
 _tls_ctx = None
 if TLS_ENABLED:
     _tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    # certServ.pem contiene cert + private key (como el ejemplo del profe)
     _tls_ctx.load_cert_chain(certfile=TLS_CERT, keyfile=TLS_CERT)
 
 # === CONFIGURACIÓN DE LOGS ===
@@ -116,7 +115,6 @@ def handle_client(conn, addr):
     
     logger.info(f"[ENGINE] CP_ID = {cp_id}")
     
-    # Verificar si tiene clave de cifrado (está autenticado)
     if encryption_key:
         logger.info(f"[ENGINE] CP autenticado con clave de cifrado")
         cp_state["status"] = "ACTIVADO"
@@ -176,7 +174,6 @@ def handle_client(conn, addr):
             cp_state["authenticated"] = True
             cp_state["status"] = "ACTIVADO"
             
-            # AHORA SÍ, registrar en Central
             logger.info(f"[ENGINE] Registrando CP autenticado en Central...\n")
             send_to_kafka('cp-register', {
                 "cp_id": cp_id,

@@ -216,7 +216,6 @@ def set_cp_location(cp_id):
         return jsonify({"error": "Error interno"}), 500
 
 
-# ============= ENDPOINTS PARA REGISTRY ============= #
 
 @app.route("/registry/cp/<cp_id>", methods=["GET"])
 def get_registry_cp(cp_id):
@@ -414,7 +413,6 @@ def list_registry_cps():
     
 if __name__ == "__main__":
     log.info(f"[API_CENTRAL] Iniciando en puerto {REST_PORT}")
-    # host=0.0.0.0 para que sea accesible desde fuera del contenedor
     API_CERT = "/app/certs/certificado_api_central.crt"
     API_KEY  = "/app/certs/clave_privada_api_central.pem"
 
