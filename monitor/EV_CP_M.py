@@ -147,20 +147,30 @@ class EngineConnector():
         raw.connect((self.ip, self.puerto))
 
         if TLS_ENABLED:
-            tls_sock = self.tls_ctx.wrap_socket(raw, server_hostname=self.ip)
-            tls_sock.settimeout(5)
-            s = tls_sock
+            s = self.tls_ctx.wrap_socket(raw, server_hostname=self.ip)
+            s.settimeout(5)
         else:
             s = raw
 
-        # Enviar CP_ID y clave de cifrado si está autenticado
-        msg_init = f"CP_ID:{self.id}"
-        if auth_state["encryption_key"]:
+        # Handshake: CP_ID:<id>:<ubicacion>[:<encryption_key>]
+        msg_init = f"CP_ID:{self.id}:{monitor_state['ubicacion']}"
+        if auth_state.get("encryption_key"):
             msg_init += f":{auth_state['encryption_key']}"
-        
+
         send_msg(s, msg_init)
-        print(f"[MONITOR] ID {self.id} enviada al Engine.")
+
+        # (Recomendado) esperar OK del engine para confirmar
+        resp = receive_msg(s)
+        if resp != "OK":
+            try:
+                s.close()
+            except Exception:
+                pass
+            raise Exception(f"[MONITOR] Handshake con Engine falló. Respuesta: {resp}")
+
+        print(f"[MONITOR] Handshake enviado al Engine: {msg_init}")
         return s
+
 
     def try_connect_engine(self):
         while True:
