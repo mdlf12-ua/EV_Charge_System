@@ -219,4 +219,14 @@ def set_cp_location(cp_id):
 if __name__ == "__main__":
     log.info(f"[API_CENTRAL] Iniciando en puerto {REST_PORT}")
     # host=0.0.0.0 para que sea accesible desde fuera del contenedor
-    app.run(host="0.0.0.0", port=REST_PORT, debug=False)
+    API_CERT = "/app/certs/certificado_api_central.crt"
+    API_KEY  = "/app/certs/clave_privada_api_central.pem"
+
+    app.run(
+        host="0.0.0.0",
+        port=REST_PORT,
+        debug=False,
+        ssl_context=(API_CERT, API_KEY)
+    )
+
+
