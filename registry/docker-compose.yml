@@ -14,7 +14,7 @@ services:
         
         # Configuración propia del Registry
         REGISTRY_PORT: 9000
-        API_CENTRAL_BASE: "https://192.168.1.35:8000" # Para notificar a Central vía API REST
+        API_CENTRAL_BASE: ${API_CENTRAL_BASE} # Para notificar a Central vía API REST
       ports:
         - "9000:9000"
       volumes:
