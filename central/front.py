@@ -1,11 +1,28 @@
 import os
 import requests
-from flask import Flask, jsonify, Response, request
+from flask import Flask, jsonify, Response
 
-API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "http://api_central:8000")
+API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "https://api_central:8000")
+CA_CERT = os.getenv("CA_CERT", "/app/certs/certificado_CA.crt")
 FRONT_PORT = int(os.getenv("FRONT_PORT", 8080))
 
 app = Flask(__name__)
+
+@app.get("/api/cps")
+def proxy_cps():
+    # Si es HTTPS, verifica con tu CA (si existe). Si es HTTP, verify no aplica.
+    if API_CENTRAL_BASE.lower().startswith("https://"):
+        verify = CA_CERT if os.path.exists(CA_CERT) else True
+    else:
+        verify = True
+
+    r = requests.get(f"{API_CENTRAL_BASE}/cps", timeout=5, verify=verify)
+    return Response(
+        r.content,
+        status=r.status_code,
+        content_type=r.headers.get("content-type", "application/json")
+    )
+
 
 HTML = r"""
 <!doctype html>
@@ -293,12 +310,6 @@ HTML = r"""
 @app.get("/")
 def index():
     return Response(HTML, mimetype="text/html")
-
-@app.get("/api/cps")
-def proxy_cps():
-    # Proxy para que el navegador no tenga problemas de DNS/localhost con Docker
-    r = requests.get(f"{API_CENTRAL_BASE}/cps", timeout=5)
-    return Response(r.content, status=r.status_code, content_type=r.headers.get("content-type", "application/json"))
 
 @app.get("/health")
 def front_health():
