@@ -35,7 +35,7 @@ OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # URL base de tu API_Central
 # Dentro de docker-compose, el host será 'api_central'
-API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "http://api_central:8000")
+API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "https://api_central:8000")
 
 # Intervalo entre consultas (segundos)
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 4))
@@ -49,6 +49,8 @@ running = True             # bandera para parar hilos limpiamente
 
 
 # ----------------- FUNCIONES AUXILIARES ----------------- #
+
+CA_CERT = os.getenv("CA_CERT", "/app/certs/certificado_CA.crt")
 
 def get_temperature(city: str):
     """
@@ -80,7 +82,7 @@ def notify_alert(location: str, temp: float):
         "temperature": temp
     }
     try:
-        resp = requests.post(url, json=payload, timeout=5)
+        resp = requests.post(url, json=payload, timeout=5, verify=CA_CERT)
         if resp.status_code == 200:
             log.info(f"[EV_W] ALERTA enviada a API_Central para {location} (T={temp:.2f} ºC)")
         else:
@@ -99,7 +101,7 @@ def notify_recover(location: str, temp: float):
         "temperature": temp
     }
     try:
-        resp = requests.post(url, json=payload, timeout=5)
+        resp = requests.post(url, json=payload, timeout=5, verify=CA_CERT)
         if resp.status_code == 200:
             log.info(f"[EV_W] RECUPERACIÓN enviada a API_Central para {location} (T={temp:.2f} ºC)")
         else:
@@ -165,7 +167,7 @@ def change_cp_location(cp_id: str, new_location: str):
     payload = {"location": new_location}
 
     try:
-        resp = requests.post(url, json=payload, timeout=5)
+        resp = requests.post(url, json=payload, timeout=5, verify=CA_CERT)
         if resp.status_code == 200:
             log.info(f"[EV_W] CP {cp_id} cambiado a ciudad '{new_location}' via API_Central")
             print(f"  [OK] CP {cp_id} ahora está en '{new_location}'")
