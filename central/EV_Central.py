@@ -1088,6 +1088,7 @@ def central_menu():
         print(" 1. Mostrar estado de todos los CPs")
         print(" 2. Enviar orden (Parar/Reanudar) a un CP")
         print(" 3. Enviar orden (Parar/Reanudar) a TODOS los CPs")
+        print(" 4. Revocar clave a un CP")
         print(" 0. Salir (Apagar Central)")
         print("=====================================")
         

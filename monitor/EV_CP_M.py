@@ -4,8 +4,10 @@ import time
 import os
 import ssl
 import sys
+import requests
 
 HEALTHSTATUS_TIEMPO = 1
+REGISTRY_URL = os.getenv("REGISTRY_URL", "https://192.168.1.35:9000")
 
 monitor_state = {
     "cp_id": None,
@@ -356,6 +358,13 @@ def menu_monitor(engine_socket, central_socket):
     """
     Menú interactivo para pruebas (cambiar ubicación).
     """
+    auth_state = {
+        "token": None,
+        "encryption_key": None,
+        "authenticated": False
+    }
+
+
     while True:
         print("\n============================")
         print("    CP MONITOR (EV_CP_M)    ")
@@ -363,15 +372,51 @@ def menu_monitor(engine_socket, central_socket):
         print(f" CP: {monitor_state['cp_id']}")
         print(f" Ubicación actual: {monitor_state['ubicacion']}")
         print(f" Averiado: {monitor_state['averiado']}")
+        print(f" Autenticado: {'✓' if auth_state['authenticated'] else '✗'}")
         print("============================")
-        print(" 1. Cambiar ubicación (ciudad)")
-        print(" 2. Reenviar info a Central")
+        print(" 1. Registrarse en Registry")
+        print(" 2. Autenticarse en Central")
+        print(" 3. Cambiar ubicación (ciudad)")
+        print(" 4. Reenviar info a Central")
         print(" 0. Salir")
         print("============================")
 
         op = input(" Elige opción: ").strip()
 
         if op == "1":
+            print("\n--- REGISTRO EN REGISTRY ---")
+            ubicacion = input(" Ubicación del CP: ").strip()
+            if not ubicacion:
+                print(" [MONITOR] Ubicación vacía, usando actual")
+                ubicacion = monitor_state["ubicacion"]
+            
+            token = registrar_en_registry(monitor_state["cp_id"], ubicacion)
+            if token:
+                auth_state["token"] = token
+                monitor_state["ubicacion"] = ubicacion
+                print(" [MONITOR] ✓ Registro completado. Ahora puedes autenticarte.")
+            
+        elif op == "2":
+            if not auth_state["token"]:
+                print(" [MONITOR] ✗ Primero debes registrarte (opción 1)")
+                continue
+                
+            print("\n--- AUTENTICACIÓN EN CENTRAL ---")
+            encryption_key = autenticar_en_central(
+                central_socket, 
+                monitor_state["cp_id"], 
+                auth_state["token"]
+            )
+            
+            if encryption_key:
+                auth_state["encryption_key"] = encryption_key
+                auth_state["authenticated"] = True
+                print(" [MONITOR] ✓ CP autenticado y listo para operar")
+            else:
+                print(" [MONITOR] ✗ Autenticación fallida")
+                auth_state["authenticated"] = False
+
+        elif op == "3":
             nueva = input(" Nueva ciudad: ").strip()
             if not nueva:
                 print(" [MONITOR] Ciudad vacía, cancelado.")
@@ -383,7 +428,7 @@ def menu_monitor(engine_socket, central_socket):
             # reenvía para que Central “vea” el cambio
             enviar_info_a_central(central_socket)
 
-        elif op == "2":
+        elif op == "4":
             enviar_info_a_central(central_socket)
 
         elif op == "0":
@@ -392,6 +437,79 @@ def menu_monitor(engine_socket, central_socket):
 
         else:
             print(" Opción no válida.")
+
+
+def registrar_en_registry(cp_id, ubicacion):
+    """
+    Registra el CP en EV_Registry y obtiene token
+    """
+    try:
+        response = requests.post(
+            f"{REGISTRY_URL}/cp/register",
+            json={"cp_id": cp_id, "ubicacion": ubicacion},
+            timeout=10,
+            verify=False  # porque usas certificado autofirmado
+        )
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            token = data.get("token")
+            print(f"[MONITOR] ✓ Registrado en Registry exitosamente")
+            print(f"[MONITOR] Token recibido: {token[:16]}...")
+            return token
+        else:
+            print(f"[MONITOR] ✗ Error en registro: {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"[MONITOR] ✗ Error conectando a Registry: {e}")
+        return None
+
+
+def autenticar_en_central(central_socket, cp_id, token, timeout=10):
+    """
+    Autentica el CP en Central usando el token de Registry
+    Retorna la clave de cifrado simétrico
+    """
+    if not central_socket.connected.wait(timeout):
+        print("[MONITOR] Central no conectada")
+        return None
+        
+    with central_socket.lock:
+        s = central_socket.socket
+    
+    if s is None:
+        return None
+    
+    try:
+        # Enviar mensaje de autenticación
+        msg = f"CP_AUTH:{cp_id}:{token}"
+        send_msg(s, msg)
+        print(f"[MONITOR] Enviando autenticación a Central...")
+        
+        # Recibir respuesta
+        respuesta = receive_msg(s)
+        
+        if respuesta and respuesta.startswith("AUTH_OK:"):
+            encryption_key = respuesta.split(":", 1)[1]
+            print(f"[MONITOR] ✓ Autenticación exitosa")
+            print(f"[MONITOR] Clave de cifrado recibida: {encryption_key[:16]}...")
+            return encryption_key
+        else:
+            print(f"[MONITOR] ✗ Autenticación fallida: {respuesta}")
+            return None
+            
+    except Exception as e:
+        print(f"[MONITOR] ✗ Error en autenticación: {e}")
+        with central_socket.lock:
+            if s is central_socket.socket:
+                try: 
+                    s.close()
+                except: 
+                    pass
+                central_socket.socket = None
+                central_socket.connected.clear()
+        return None
 
 if __name__ == "__main__":
 
