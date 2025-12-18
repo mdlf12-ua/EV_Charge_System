@@ -6,7 +6,6 @@ import os
 import time
 import sys
 import ssl
-
 import json
 from kafka import KafkaProducer
 from kafka import KafkaConsumer
@@ -68,6 +67,160 @@ central_cps = {}
 lock = Lock()
 kafka_producer = None
 kafka_consumer=None
+
+def send_msg_central(conn, msg):
+    """Envía un mensaje al CP por el socket"""
+    message = msg.encode(FORMAT)
+    msg_length = len(message)
+    header = f"{msg_length:<{HEADER}}".encode(FORMAT)
+    conn.send(header + message)
+
+def validar_registro_cp(cp_id):
+    """
+    Verifica que el CP esté registrado en CPRegistry antes de permitir autenticación
+    """
+    DB_HOST = os.getenv("DB_HOST", "mysql")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_USER = os.getenv("DB_USER", "usuario")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
+    DB_NAME = os.getenv("DB_NAME", "database")
+    
+    try:
+        conexion = mysql.connector.connect(
+            host=DB_HOST, port=DB_PORT,
+            user=DB_USER, password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT * FROM CPRegistry 
+            WHERE cp_id = %s AND registrado = 1
+        """, (cp_id,))
+        
+        resultado = cursor.fetchone()
+        cursor.close()
+        conexion.close()
+        
+        if resultado:
+            return True, resultado.get("ubicacion")
+        else:
+            return False, None
+            
+    except Exception as e:
+        log.error(f"[CENTRAL] Error validando registro de CP {cp_id}: {e}")
+        return False, None
+
+
+def autenticar_cp(cp_id, token_registry):
+    """
+    Autentica un CP verificando su token de Registry y generando clave de cifrado
+    """
+    DB_HOST = os.getenv("DB_HOST", "mysql")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_USER = os.getenv("DB_USER", "usuario")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
+    DB_NAME = os.getenv("DB_NAME", "database")
+    
+    try:
+        conexion = mysql.connector.connect(
+            host=DB_HOST, port=DB_PORT,
+            user=DB_USER, password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        
+        cursor = conexion.cursor(dictionary=True)
+        
+        # 1. Validar token en Registry
+        cursor.execute("""
+            SELECT * FROM CPRegistry 
+            WHERE cp_id = %s AND token = %s AND registrado = 1
+        """, (cp_id, token_registry))
+        
+        resultado = cursor.fetchone()
+        
+        if not resultado:
+            cursor.close()
+            conexion.close()
+            log.warning(f"[CENTRAL] Autenticación fallida: CP {cp_id} no registrado o token inválido")
+            return False, None
+        
+        # 2. Generar clave de cifrado única para este CP
+        import secrets
+        encryption_key = secrets.token_hex(16)
+        
+        # 3. Guardar en tabla de autenticación
+        cursor.execute("""
+            INSERT INTO CPAuthentication (cp_id, encryption_key, authenticated)
+            VALUES (%s, %s, 1)
+            ON DUPLICATE KEY UPDATE
+                encryption_key = VALUES(encryption_key),
+                authenticated = 1,
+                fecha_auth = CURRENT_TIMESTAMP
+        """, (cp_id, encryption_key))
+        
+        conexion.commit()
+        cursor.close()
+        conexion.close()
+        
+        log.info(f"[CENTRAL] CP {cp_id} autenticado exitosamente. Clave de cifrado generada.")
+        return True, encryption_key
+        
+    except Exception as e:
+        log.error(f"[CENTRAL] Error autenticando CP {cp_id}: {e}")
+        return False, None
+
+
+def revocar_clave_cp(cp_id):
+    """
+    Revoca la clave de cifrado de un CP específico (opción del menú)
+    """
+    DB_HOST = os.getenv("DB_HOST", "mysql")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_USER = os.getenv("DB_USER", "usuario")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
+    DB_NAME = os.getenv("DB_NAME", "database")
+    
+    try:
+        conexion = mysql.connector.connect(
+            host=DB_HOST, port=DB_PORT,
+            user=DB_USER, password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        
+        cursor = conexion.cursor()
+        
+        cursor.execute("""
+            UPDATE CPAuthentication 
+            SET authenticated = 0
+            WHERE cp_id = %s
+        """, (cp_id,))
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conexion.close()
+            log.warning(f"[CENTRAL] CP {cp_id} no tiene autenticación para revocar")
+            return False
+        
+        conexion.commit()
+        cursor.close()
+        conexion.close()
+        
+        log.info(f"[CENTRAL] Clave de cifrado revocada para CP {cp_id}")
+        
+        # Poner el CP en estado PARADO
+        with lock:
+            if cp_id in central_cps:
+                central_cps[cp_id]["ESTADO"] = "PARADO"
+        
+        send_order_cp(cp_id, "STOP")
+        
+        return True
+        
+    except Exception as e:
+        log.error(f"[CENTRAL] Error revocando clave de CP {cp_id}: {e}")
+        return False
+
 
 def search_CP():
 
@@ -268,6 +421,36 @@ def handle_CP(conn, addr):
             #############################################
             #Aqui iniciaria el protocolo                #
             #############################################
+            if msg.startswith("CP_AUTH:"):
+                try:
+                    _, cp_id, token_registry = msg.split(":", 2)
+                except ValueError:
+                    log.warning(f"[CENTRAL] Formato CP_AUTH inválido: {msg}")
+                    response = "AUTH_FAIL:Formato inválido"
+                    send_msg_central(conn, response)
+                    continue
+                
+                # Validar que esté registrado
+                registrado, ubicacion = validar_registro_cp(cp_id)
+                if not registrado:
+                    log.warning(f"[CENTRAL] CP {cp_id} no está registrado en Registry")
+                    response = "AUTH_FAIL:No registrado"
+                    send_msg_central(conn, response)
+                    continue
+                
+                # Autenticar y generar clave
+                exito, encryption_key = autenticar_cp(cp_id, token_registry)
+                if exito:
+                    response = f"AUTH_OK:{encryption_key}"
+                    send_msg_central(conn, response)
+                    log.info(f"[CENTRAL] Autenticación exitosa: {cp_id}")
+                else:
+                    response = "AUTH_FAIL:Token inválido"
+                    send_msg_central(conn, response)
+                
+                continue
+
+
             #Averia
             if msg.startswith("CP_AVERIA:"):
                 try:
@@ -916,11 +1099,26 @@ def central_menu():
             menu_send_order_one()
         elif opcion == "3":
             menu_send_order_all()
+        elif opcion == "4": 
+            menu_revocar_clave()
         elif opcion == "0":
             print("[CENTRAL] Opción 0 seleccionada. Saliendo...")
             break # Rompe el bucle del menú para apagar
         else:
             print(f"[ERROR] Opción '{opcion}' no válida. Inténtalo de nuevo.")
+
+def menu_revocar_clave():
+    """Menú para revocar la clave de cifrado de un CP"""
+    cp_id = input("  Introduce el ID del CP: ").strip()
+    
+    confirmacion = input(f"  ¿Confirmas revocar la clave de {cp_id}? (s/n): ").strip().lower()
+    if confirmacion == "s":
+        if revocar_clave_cp(cp_id):
+            print(f"  ✓ Clave revocada. {cp_id} deberá autenticarse de nuevo.")
+        else:
+            print(f"  ✗ No se pudo revocar la clave.")
+    else:
+        print("  Operación cancelada.")
 
 def sync_cps_periodicamente(intervalo_segundos=5):
 

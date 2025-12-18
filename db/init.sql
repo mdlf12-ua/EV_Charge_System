@@ -22,3 +22,11 @@ CREATE TABLE IF NOT EXISTS CPRegistry (
     registrado TINYINT(1) DEFAULT 1,
     fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS CPAuthentication (
+    cp_id VARCHAR(50) PRIMARY KEY,
+    encryption_key VARCHAR(64) NOT NULL,
+    authenticated TINYINT(1) DEFAULT 1,
+    fecha_auth TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cp_id) REFERENCES CPRegistry(cp_id)
+);

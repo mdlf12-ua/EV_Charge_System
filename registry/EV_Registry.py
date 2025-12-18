@@ -4,10 +4,12 @@ import secrets
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request
 import requests
-
+import urllib3
+#Registry
 # ----------------- LOGGING ----------------- #
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logging.basicConfig(level=logging.INFO, force=True)
 log = logging.getLogger("registry")
@@ -59,7 +61,7 @@ def register_cp():
     
     try:
         # Consultar si ya existe vía API_Central
-        response = requests.get(f"{API_CENTRAL_BASE}/registry/cp/{cp_id}", timeout=5)
+        response = requests.get(f"{API_CENTRAL_BASE}/registry/cp/{cp_id}", timeout=5, verify=False)
         
         token = generar_credenciales()
         
@@ -69,7 +71,8 @@ def register_cp():
             update_response = requests.put(
                 f"{API_CENTRAL_BASE}/registry/cp/{cp_id}",
                 json={"ubicacion": ubicacion, "token": token, "registrado": 1},
-                timeout=5
+                timeout=5,
+                verify=False
             )
             
             if update_response.status_code == 200:
@@ -89,7 +92,8 @@ def register_cp():
             create_response = requests.post(
                 f"{API_CENTRAL_BASE}/registry/cp",
                 json={"cp_id": cp_id, "ubicacion": ubicacion, "token": token, "registrado": 1},
-                timeout=5
+                timeout=5,
+                verify=False
             )
             
             if create_response.status_code in [200, 201]:
@@ -126,7 +130,8 @@ def unregister_cp():
         response = requests.put(
             f"{API_CENTRAL_BASE}/registry/cp/{cp_id}",
             json={"registrado": 0},
-            timeout=5
+            timeout=5,
+            verify=False
         )
         
         if response.status_code == 200:
@@ -166,7 +171,8 @@ def authenticate_cp():
         response = requests.post(
             f"{API_CENTRAL_BASE}/registry/authenticate",
             json={"cp_id": cp_id, "token": token},
-            timeout=5
+            timeout=5,
+            verify=False
         )
         
         if response.status_code == 200:
@@ -200,7 +206,7 @@ def authenticate_cp():
 def list_cps():
     """Lista todos los CPs registrados (útil para debug)"""
     try:
-        response = requests.get(f"{API_CENTRAL_BASE}/registry/cps", timeout=5)
+        response = requests.get(f"{API_CENTRAL_BASE}/registry/cps", timeout=5, verify=False)
         
         if response.status_code == 200:
             return jsonify(response.json()), 200
