@@ -19,5 +19,6 @@ services:
         - "9000:9000"
       volumes:
         - ./logs:/app/logs
+        - ../certs:/app/certs:ro
       tty: true
       stdin_open: true
