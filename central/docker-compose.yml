@@ -37,7 +37,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 #Una copia de los metadatos del kafka porque tenemos un nodo en el cluster
 
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.18.18:9092 #PLAINTEXT_HOST://192.168.18.28:9092 #Hay que poner la IP del que lanza el docker en vez de kafka
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.1.35:9092 #PLAINTEXT_HOST://192.168.18.28:9092 #Hay que poner la IP del que lanza el docker en vez de kafka
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
 
@@ -92,7 +92,7 @@ services:
         condition: service_healthy
     environment:
       CENTRAL_PORT: 5000        # puerto donde escucha tu socket
-      KAFKA_IP: 192.168.18.18 # IP LAN del host donde corre Kafka
+      KAFKA_IP: 192.168.1.35 # IP LAN del host donde corre Kafka
       KAFKA_PORT: 9092
       DB_HOST: mysql
       DB_PORT: 3306

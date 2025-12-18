@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Instalamos dependencias de sistema para MySQL (necesario para mysql-connector)
+RUN apt-get update && apt-get install -y \
+    default-libmysqlclient-dev \
+    gcc \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copia el requirements.txt que está en esa misma carpeta
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia el script del Registry que está en esa misma carpeta
+COPY EV_Registry.py .
+
+# Ejecutamos el script del Registry
+CMD ["python", "-u", "EV_Registry.py"]
