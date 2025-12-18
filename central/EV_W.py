@@ -35,7 +35,7 @@ OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # URL base de tu API_Central
 # Dentro de docker-compose, el host será 'api_central'
-API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "https://api_central:8000")
+API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "https://192.168.1.35:8000")
 
 # Intervalo entre consultas (segundos)
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 4))
