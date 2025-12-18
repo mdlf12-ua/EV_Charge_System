@@ -100,9 +100,14 @@ def handle_client(conn, addr):
         conn.close()
         return
 
-    partes = msg.split(":", 2)
+    # Después:
+    partes = msg.split(":", 3)
     cp_id = partes[1].strip()
-    encryption_key = partes[2].strip() if len(partes) > 2 else None
+    ubicacion = partes[2].strip() if len(partes) > 2 else None
+    encryption_key = partes[3].strip() if len(partes) > 3 else None
+
+    cp_state["cp_id"] = cp_id
+    cp_state["ubicacion"] = ubicacion
     
     cp_state["cp_id"] = cp_id
     cp_state["consumo_kw"] = 0.0
