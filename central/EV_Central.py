@@ -11,6 +11,80 @@ from kafka import KafkaProducer
 from kafka import KafkaConsumer
 import logging, os
 from logging.handlers import RotatingFileHandler
+from cryptography.fernet import Fernet
+import base64
+import hashlib
+
+def crear_cipher_desde_key(encryption_key: str):
+    """
+    Crea un objeto Fernet a partir de la clave hex.
+    Debe usar el MISMO método que el Monitor para generar claves compatibles.
+    """
+    key_bytes = hashlib.sha256(encryption_key.encode()).digest()
+    key_b64 = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(key_b64)
+
+
+def obtener_encryption_key_cp(cp_id):
+    """
+    Obtiene la clave de cifrado de un CP desde la BD.
+    """
+    DB_HOST = os.getenv("DB_HOST", "mysql")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_USER = os.getenv("DB_USER", "usuario")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "contraseña")
+    DB_NAME = os.getenv("DB_NAME", "database")
+    
+    try:
+        conexion = mysql.connector.connect(
+            host=DB_HOST, port=DB_PORT,
+            user=DB_USER, password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT encryption_key 
+            FROM CPAuthentication 
+            WHERE cp_id = %s AND authenticated = 1
+        """, (cp_id,))
+        
+        resultado = cursor.fetchone()
+        cursor.close()
+        conexion.close()
+        
+        if resultado:
+            return resultado.get("encryption_key")
+        else:
+            return None
+            
+    except Exception as e:
+        log.error(f"[CENTRAL] Error obteniendo clave de {cp_id}: {e}")
+        return None
+
+
+def descifrar_mensaje_cp(cp_id, mensaje_cifrado_b64):
+    """
+    Descifra un mensaje de un CP usando su clave de sesión.
+    """
+    try:
+        # Obtener la clave del CP
+        encryption_key = obtener_encryption_key_cp(cp_id)
+        if not encryption_key:
+            log.error(f"[CENTRAL] No hay clave de cifrado para CP {cp_id}")
+            return None
+        
+        # Crear cipher
+        cipher = crear_cipher_desde_key(encryption_key)
+        
+        # Descifrar
+        encrypted_bytes = base64.b64decode(mensaje_cifrado_b64.encode())
+        decrypted = cipher.decrypt(encrypted_bytes)
+        return decrypted.decode()
+        
+    except Exception as e:
+        log.error(f"[CENTRAL] Error descifrando mensaje de {cp_id}: {e}")
+        return None
 
 TLS_CERT = os.getenv("TLS_CERT", "/app/certs/certServ.pem")
 TLS_ENABLED = os.getenv("TLS_ENABLED", "1") == "1"
@@ -421,6 +495,7 @@ def handle_CP(conn, addr):
             #############################################
             #Aqui iniciaria el protocolo                #
             #############################################
+            # AUTENTICACIÓN (sin cifrar)
             if msg.startswith("CP_AUTH:"):
                 try:
                     _, cp_id, token_registry = msg.split(":", 2)
@@ -430,7 +505,6 @@ def handle_CP(conn, addr):
                     send_msg_central(conn, response)
                     continue
                 
-                # Validar que esté registrado
                 registrado, ubicacion = validar_registro_cp(cp_id)
                 if not registrado:
                     log.warning(f"[CENTRAL] CP {cp_id} no está registrado en Registry")
@@ -438,7 +512,6 @@ def handle_CP(conn, addr):
                     send_msg_central(conn, response)
                     continue
                 
-                # Autenticar y generar clave
                 exito, encryption_key = autenticar_cp(cp_id, token_registry)
                 if exito:
                     response = f"AUTH_OK:{encryption_key}"
@@ -449,6 +522,39 @@ def handle_CP(conn, addr):
                     send_msg_central(conn, response)
                 
                 continue
+
+            if msg.startswith("ENCRYPTED:"):
+                try:
+                    _, mensaje_cifrado = msg.split(":", 1)
+                    
+                    # Primero intentamos extraer el CP_ID del mensaje cifrado
+                    # Para esto, necesitamos descifrar con todas las claves posibles
+                    # o el CP debe incluir su ID en claro antes del mensaje cifrado
+                    
+                    # OPCIÓN 1: Formato mejorado "ENCRYPTED:CP_ID:mensaje_cifrado"
+                    partes = mensaje_cifrado.split(":", 1)
+                    if len(partes) == 2:
+                        cp_id_claro = partes[0]
+                        msg_cifrado_b64 = partes[1]
+                    else:
+                        log.warning("[CENTRAL] Mensaje cifrado sin CP_ID")
+                        continue
+                    
+                    # Descifrar
+                    mensaje_claro = descifrar_mensaje_cp(cp_id_claro, msg_cifrado_b64)
+                    
+                    if not mensaje_claro:
+                        log.error(f"[CENTRAL] No se pudo descifrar mensaje de {cp_id_claro}")
+                        continue
+                    
+                    log.info(f"[CENTRAL] Mensaje descifrado de {cp_id_claro}: {mensaje_claro}")
+                    
+                    # Procesar el mensaje descifrado
+                    msg = mensaje_claro  # Reutilizar la lógica existente
+                    
+                except Exception as e:
+                    log.error(f"[CENTRAL] Error procesando mensaje cifrado: {e}")
+                    continue
 
 
             #Averia

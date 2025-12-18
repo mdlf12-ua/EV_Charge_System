@@ -5,7 +5,12 @@ import os
 import ssl
 import sys
 import requests
+import json
+from cryptography.fernet import Fernet
+import base64
+import hashlib
 
+# === CONFIGURACIÓN ===
 HEALTHSTATUS_TIEMPO = 1
 REGISTRY_URL = os.getenv("REGISTRY_URL", "https://192.168.1.35:9000")
 
@@ -16,18 +21,66 @@ monitor_state = {
     "conocido": False
 }
 
+# Estado de autenticación COMPARTIDO con Engine
+auth_state = {
+    "token": None,
+    "encryption_key": None,
+    "authenticated": False,
+    "cipher": None  # Objeto Fernet para cifrado
+}
 
 FORMAT = "utf-8"
 HEADER = 64
-
 TLS_ENABLED = os.getenv("TLS_ENABLED", "1") == "1"
 TLS_CA = os.getenv("TLS_CA", "/app/certs/certServ.pem")
 
+
+# === FUNCIONES DE CIFRADO ===
+def crear_cipher_desde_key(encryption_key: str):
+    """
+    Crea un objeto Fernet a partir de la clave hex recibida de Central.
+    Fernet requiere una clave de 32 bytes en base64.
+    """
+    # Convertir hex a bytes y hacer hash para obtener 32 bytes consistentes
+    key_bytes = hashlib.sha256(encryption_key.encode()).digest()
+    key_b64 = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(key_b64)
+
+
+def cifrar_mensaje(mensaje: str) -> str:
+    """Cifra un mensaje usando la clave de sesión"""
+    if not auth_state["cipher"]:
+        raise Exception("No hay cipher inicializado")
+    
+    encrypted = auth_state["cipher"].encrypt(mensaje.encode())
+    return base64.b64encode(encrypted).decode()
+
+
+def descifrar_mensaje(mensaje_cifrado: str) -> str:
+    """Descifra un mensaje recibido"""
+    if not auth_state["cipher"]:
+        raise Exception("No hay cipher inicializado")
+    
+    encrypted_bytes = base64.b64decode(mensaje_cifrado.encode())
+    decrypted = auth_state["cipher"].decrypt(encrypted_bytes)
+    return decrypted.decode()
+
+
+# === TLS CONTEXTS ===
 def build_tls_client_context_engine() -> ssl.SSLContext:
     cafile = TLS_CA
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
-    ctx.check_hostname = False          # en docker/IP normalmente no cuadra CN
-    ctx.verify_mode = ssl.CERT_REQUIRED # valida cert del servidor (self-signed OK si está en cafile)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
+def build_tls_client_context() -> ssl.SSLContext:
+    cafile = os.getenv("TLS_CA", "/app/certs/certServ.pem")
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_REQUIRED
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     return ctx
 
@@ -40,6 +93,35 @@ def send_msg(sock: socket.socket, msg: str):
     sock.sendall(payload)
 
 
+def recvall(sock: socket.socket, n: int) -> bytes | None:
+    data = b""
+    while len(data) < n:
+        try:
+            chunk = sock.recv(n - len(data))
+        except (socket.timeout, OSError):
+            return None
+        if not chunk:
+            return None
+        data += chunk
+    return data
+
+
+def receive_msg(sock: socket.socket) -> str | None:
+    header_bytes = recvall(sock, HEADER)
+    if not header_bytes:
+        return None
+    try:
+        length = int(header_bytes.decode(FORMAT).strip())
+    except ValueError:
+        return None
+
+    body = recvall(sock, length)
+    if not body:
+        return None
+    return body.decode(FORMAT)
+
+
+# === ENGINE CONNECTOR ===
 class EngineConnector():
     def __init__(self, ip, port, cp_id):
         self.ip = ip
@@ -65,14 +147,18 @@ class EngineConnector():
         raw.connect((self.ip, self.puerto))
 
         if TLS_ENABLED:
-            # SNI: usamos el hostname del servicio docker (engine1, engine2, etc.)
             tls_sock = self.tls_ctx.wrap_socket(raw, server_hostname=self.ip)
             tls_sock.settimeout(5)
             s = tls_sock
         else:
             s = raw
 
-        send_msg(s, f"CP_ID:{self.id}")
+        # Enviar CP_ID y clave de cifrado si está autenticado
+        msg_init = f"CP_ID:{self.id}"
+        if auth_state["encryption_key"]:
+            msg_init += f":{auth_state['encryption_key']}"
+        
+        send_msg(s, msg_init)
         print(f"[MONITOR] ID {self.id} enviada al Engine.")
         return s
 
@@ -100,18 +186,8 @@ class EngineConnector():
                 print(f"[MONITOR] No se pudo conectar al engine: {e}. Reintentando en 5s...")
                 time.sleep(5)
 
-TLS_CERT = os.getenv("TLS_CERT", "/app/certs/certServ.pem")
 
-def build_tls_client_context() -> ssl.SSLContext:
-    cafile = os.getenv("TLS_CA", "/app/certs/certServ.pem")
-
-    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
-    ctx.check_hostname = False          # simplifica (en docker/ip no cuadra CN)
-    ctx.verify_mode = ssl.CERT_REQUIRED # valida que es "el server" correcto
-
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    return ctx
-
+# === CENTRAL CONNECTOR ===
 class CentralConnector():
     def __init__(self, ip, port, cp_id):
         self.ip = ip
@@ -142,13 +218,8 @@ class CentralConnector():
 
         print("[MONITOR] Conectado a Central (TLS)")
 
-        estado_str = "OK" if not monitor_state["averiado"] else "KO"
-        msg_inicial = f"{self.id} {monitor_state['ubicacion']} {estado_str} 0.30"
-        send_msg(tls_sock, msg_inicial)
-        print(f"[MONITOR] Información inicial enviada: {msg_inicial}")
-
+        # NO enviar info inicial aquí, esperar a autenticarse primero
         return tls_sock
-
 
     def try_connect_central(self):
         while True:
@@ -175,75 +246,152 @@ class CentralConnector():
                 time.sleep(5)
 
 
-def recvall(sock: socket.socket, n: int) -> bytes | None:
-    data = b""
-    while len(data) < n:
-        try:
-            chunk = sock.recv(n - len(data))
-        except (socket.timeout, OSError):
-            return None
-        if not chunk:
-            return None
-        data += chunk
-    return data
-
-def receive_msg(sock: socket.socket) -> str | None:
-    header_bytes = recvall(sock, HEADER)
-    if not header_bytes:
-        return None
+# === FUNCIONES DE NOTIFICACIÓN (CON CIFRADO) ===
+def enviar_mensaje_cifrado_central(central_socket, mensaje_claro, timeout=5):
+    """
+    Envía un mensaje cifrado a Central usando la clave de sesión.
+    Formato: "ENCRYPTED:CP_ID:<base64_mensaje_cifrado>"
+    """
+    if not auth_state["authenticated"] or not auth_state["cipher"]:
+        print("[MONITOR] No autenticado, no se puede cifrar mensaje")
+        return False
+    
+    if not central_socket.connected.wait(timeout):
+        return False
+    
+    with central_socket.lock:
+        s = central_socket.socket
+    
+    if s is None:
+        return False
+    
     try:
-        length = int(header_bytes.decode(FORMAT).strip())
-    except ValueError:
-        return None
-
-    body = recvall(sock, length)
-    if not body:
-        return None
-    return body.decode(FORMAT)
+        # Cifrar el mensaje
+        mensaje_cifrado = cifrar_mensaje(mensaje_claro)
+        # Incluir CP_ID en claro para que Central sepa qué clave usar
+        msg_final = f"ENCRYPTED:{monitor_state['cp_id']}:{mensaje_cifrado}"
+        
+        send_msg(s, msg_final)
+        return True
+    
+    except Exception as e:
+        print(f"[MONITOR] Error enviando mensaje cifrado: {e}")
+        with central_socket.lock:
+            if s is central_socket.socket:
+                try: 
+                    s.close()
+                except: 
+                    pass
+                central_socket.socket = None
+                central_socket.connected.clear()
+        return False
 
 
 def noti_averia(central_socket, motivo, timeout=5):
-    if not central_socket.connected.wait(timeout):
-        return False
-    with central_socket.lock:
-        s = central_socket.socket
-    if s is None:
-        return False
-    try:
-        msg= f"CP_AVERIA:{monitor_state['cp_id']}:{motivo}"
-        send_msg(s, msg)
-        return True
-    
-    except Exception as e:
-        with central_socket.lock:
-            if s is central_socket.socket:
-                try: s.close()
-                except: pass
-                central_socket.socket = None
-                central_socket.connected.clear()
-        return False
+    """Notifica avería con cifrado"""
+    mensaje = f"CP_AVERIA:{monitor_state['cp_id']}:{motivo}"
+    return enviar_mensaje_cifrado_central(central_socket, mensaje, timeout)
+
 
 def noti_recuperacion(central_socket, motivo, timeout=5):
-    if not central_socket.connected.wait(timeout):
+    """Notifica recuperación con cifrado"""
+    mensaje = f"CP_RECUPERACION:{monitor_state['cp_id']}:{motivo}"
+    return enviar_mensaje_cifrado_central(central_socket, mensaje, timeout)
+
+
+def enviar_info_a_central(central_socket):
+    """
+    Envía estado del CP cifrado a Central.
+    """
+    if not auth_state["authenticated"]:
+        print("[MONITOR] Debes autenticarte primero")
         return False
+    
+    estado_str = "OK" if not monitor_state["averiado"] else "KO"
+    msg = f"{monitor_state['cp_id']} {monitor_state['ubicacion']} {estado_str} 0.30"
+    
+    return enviar_mensaje_cifrado_central(central_socket, msg)
+
+
+# === FUNCIONES DE REGISTRO Y AUTENTICACIÓN ===
+def registrar_en_registry(cp_id, ubicacion):
+    """Registra el CP en EV_Registry y obtiene token"""
+    try:
+        response = requests.post(
+            f"{REGISTRY_URL}/cp/register",
+            json={"cp_id": cp_id, "ubicacion": ubicacion},
+            timeout=10,
+            verify=False
+        )
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            token = data.get("token")
+            print(f"[MONITOR] ✓ Registrado en Registry exitosamente")
+            print(f"[MONITOR] Token recibido: {token[:16]}...")
+            return token
+        else:
+            print(f"[MONITOR] ✗ Error en registro: {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"[MONITOR] ✗ Error conectando a Registry: {e}")
+        return None
+
+
+def autenticar_en_central(central_socket, cp_id, token, timeout=10):
+    """
+    Autentica el CP en Central usando el token de Registry.
+    Retorna la clave de cifrado simétrico.
+    """
+    if not central_socket.connected.wait(timeout):
+        print("[MONITOR] Central no conectada")
+        return None
+        
     with central_socket.lock:
         s = central_socket.socket
-    if s is None:
-        return False
-    try:
-        msg= f"CP_RECUPERACION:{monitor_state['cp_id']}:{motivo}"
-        send_msg(s, msg)
-        return True
     
+    if s is None:
+        return None
+    
+    try:
+        # Enviar mensaje de autenticación (SIN cifrar, es el handshake inicial)
+        msg = f"CP_AUTH:{cp_id}:{token}"
+        send_msg(s, msg)
+        print(f"[MONITOR] Enviando autenticación a Central...")
+        
+        # Recibir respuesta
+        respuesta = receive_msg(s)
+        
+        if respuesta and respuesta.startswith("AUTH_OK:"):
+            encryption_key = respuesta.split(":", 1)[1]
+            print(f"[MONITOR] ✓ Autenticación exitosa")
+            print(f"[MONITOR] Clave de cifrado recibida: {encryption_key[:16]}...")
+            
+            # Crear cipher para futuras comunicaciones
+            auth_state["encryption_key"] = encryption_key
+            auth_state["cipher"] = crear_cipher_desde_key(encryption_key)
+            auth_state["authenticated"] = True
+            
+            return encryption_key
+        else:
+            print(f"[MONITOR] ✗ Autenticación fallida: {respuesta}")
+            return None
+            
     except Exception as e:
+        print(f"[MONITOR] ✗ Error en autenticación: {e}")
         with central_socket.lock:
             if s is central_socket.socket:
-                try: s.close()
-                except: pass
+                try: 
+                    s.close()
+                except: 
+                    pass
                 central_socket.socket = None
                 central_socket.connected.clear()
-        return False
+        return None
 
+
+# === HEALTHCHECK ===
 def marcar_engine_caido(engine_socket, s=None):
     with engine_socket.lock:
         if s is None or s == engine_socket.socket:
@@ -254,6 +402,8 @@ def marcar_engine_caido(engine_socket, s=None):
                 pass
             engine_socket.socket = None
             engine_socket.connected.clear()
+
+
 def set_averia(monitor_state, central_socket, nuevo_estado, motivo_ok=None, motivo_ko=None):
     estaba_averiado = monitor_state["averiado"]
     conocido = monitor_state["conocido"]
@@ -279,6 +429,7 @@ def set_averia(monitor_state, central_socket, nuevo_estado, motivo_ok=None, moti
             print("[MONITOR]: No se pudo conectar a central")
         monitor_state["averiado"] = False
 
+
 def healthstatus_periodico(engine_socket, central_socket):
     global monitor_state
     print("\n[MONITOR] Empezando healthchecks periodicos\n")
@@ -292,78 +443,33 @@ def healthstatus_periodico(engine_socket, central_socket):
             continue
         try:
             send_msg(s, "HEALTHSTATUS")
-            #print("Mensaje mandado a engine")
-            respuesta=receive_msg(s)
-            #print("Health")
+            respuesta = receive_msg(s)
+            
             if respuesta is None:
-                #print("Sin respuesta")                
                 marcar_engine_caido(engine_socket, s=s)
                 set_averia(monitor_state, central_socket, True, motivo_ko="Engine no responde")
                 time.sleep(HEALTHSTATUS_TIEMPO)
-
             elif respuesta == "KO":
-                #print("KO")   
                 set_averia(monitor_state, central_socket, True, motivo_ko="Engine está KO")
                 time.sleep(HEALTHSTATUS_TIEMPO)
-
             elif respuesta == "OK":
-                #print("OK")
                 set_averia(monitor_state, central_socket, False, motivo_ok="Engine está OK")
                 monitor_state["conocido"] = True
                 time.sleep(HEALTHSTATUS_TIEMPO)
 
         except ConnectionResetError:
-            #print("Excepcion Connection")
             marcar_engine_caido(engine_socket, s=s)
             set_averia(monitor_state, central_socket, True, motivo_ko="Conexión con Engine perdida")
-            # no hagas break; deja que el bucle espere a reconexión
             time.sleep(HEALTHSTATUS_TIEMPO)
-
         except Exception as e:
-            #print("Excepcion")
             marcar_engine_caido(engine_socket, s=s)
-            # aquí no hace falta re-notificar si ya estabas en KO; set_averia se encarga
             set_averia(monitor_state, central_socket, True, motivo_ko="Error en healthcheck")
             time.sleep(HEALTHSTATUS_TIEMPO)
-def enviar_info_a_central(central_socket):
-    """
-    Reenvía a Central el mensaje estándar:
-    "<cp_id> <ubicacion> <OK/KO> <precio>"
-    Central ya lo parsea así.
-    """
-    if not central_socket.connected.wait(3):
-        print("[MONITOR] Central no conectada todavía.")
-        return False
-
-    with central_socket.lock:
-        s = central_socket.socket
-
-    if s is None:
-        print("[MONITOR] Central socket es None.")
-        return False
-
-    estado_str = "OK" if not monitor_state["averiado"] else "KO"
-    msg = f"{monitor_state['cp_id']} {monitor_state['ubicacion']} {estado_str} 0.30"
-
-    try:
-        send_msg(s, msg)
-        print(f"[MONITOR] Info enviada a Central: {msg}")
-        return True
-    except Exception as e:
-        print(f"[MONITOR] Error enviando info a Central: {e}")
-        return False
 
 
+# === MENÚ ===
 def menu_monitor(engine_socket, central_socket):
-    """
-    Menú interactivo para pruebas (cambiar ubicación).
-    """
-    auth_state = {
-        "token": None,
-        "encryption_key": None,
-        "authenticated": False
-    }
-
+    """Menú interactivo para el CP"""
 
     while True:
         print("\n============================")
@@ -409,9 +515,17 @@ def menu_monitor(engine_socket, central_socket):
             )
             
             if encryption_key:
-                auth_state["encryption_key"] = encryption_key
-                auth_state["authenticated"] = True
                 print(" [MONITOR] ✓ CP autenticado y listo para operar")
+                
+                # Reconectar Engine con la nueva clave
+                engine_socket.connected.clear()
+                with engine_socket.lock:
+                    if engine_socket.socket:
+                        try:
+                            engine_socket.socket.close()
+                        except:
+                            pass
+                    engine_socket.socket = None
             else:
                 print(" [MONITOR] ✗ Autenticación fallida")
                 auth_state["authenticated"] = False
@@ -424,8 +538,6 @@ def menu_monitor(engine_socket, central_socket):
 
             monitor_state["ubicacion"] = nueva
             print(f"[MONITOR] Ubicación cambiada a: {nueva}")
-
-            # reenvía para que Central “vea” el cambio
             enviar_info_a_central(central_socket)
 
         elif op == "4":
@@ -439,80 +551,8 @@ def menu_monitor(engine_socket, central_socket):
             print(" Opción no válida.")
 
 
-def registrar_en_registry(cp_id, ubicacion):
-    """
-    Registra el CP en EV_Registry y obtiene token
-    """
-    try:
-        response = requests.post(
-            f"{REGISTRY_URL}/cp/register",
-            json={"cp_id": cp_id, "ubicacion": ubicacion},
-            timeout=10,
-            verify=False  # porque usas certificado autofirmado
-        )
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            token = data.get("token")
-            print(f"[MONITOR] ✓ Registrado en Registry exitosamente")
-            print(f"[MONITOR] Token recibido: {token[:16]}...")
-            return token
-        else:
-            print(f"[MONITOR] ✗ Error en registro: {response.text}")
-            return None
-            
-    except Exception as e:
-        print(f"[MONITOR] ✗ Error conectando a Registry: {e}")
-        return None
-
-
-def autenticar_en_central(central_socket, cp_id, token, timeout=10):
-    """
-    Autentica el CP en Central usando el token de Registry
-    Retorna la clave de cifrado simétrico
-    """
-    if not central_socket.connected.wait(timeout):
-        print("[MONITOR] Central no conectada")
-        return None
-        
-    with central_socket.lock:
-        s = central_socket.socket
-    
-    if s is None:
-        return None
-    
-    try:
-        # Enviar mensaje de autenticación
-        msg = f"CP_AUTH:{cp_id}:{token}"
-        send_msg(s, msg)
-        print(f"[MONITOR] Enviando autenticación a Central...")
-        
-        # Recibir respuesta
-        respuesta = receive_msg(s)
-        
-        if respuesta and respuesta.startswith("AUTH_OK:"):
-            encryption_key = respuesta.split(":", 1)[1]
-            print(f"[MONITOR] ✓ Autenticación exitosa")
-            print(f"[MONITOR] Clave de cifrado recibida: {encryption_key[:16]}...")
-            return encryption_key
-        else:
-            print(f"[MONITOR] ✗ Autenticación fallida: {respuesta}")
-            return None
-            
-    except Exception as e:
-        print(f"[MONITOR] ✗ Error en autenticación: {e}")
-        with central_socket.lock:
-            if s is central_socket.socket:
-                try: 
-                    s.close()
-                except: 
-                    pass
-                central_socket.socket = None
-                central_socket.connected.clear()
-        return None
-
+# === MAIN ===
 if __name__ == "__main__":
-
     if len(sys.argv) != 6:
         print("Argumentos incorrectos, el formato es: python EV_CP_M.py <ENGINE_IP> <ENGINE_PORT> <CENTRAL_IP> <CENTRAL_PORT> <CP_ID>\n")
         sys.exit(1)
@@ -529,15 +569,12 @@ if __name__ == "__main__":
     print(f"Central: {central_ip}:{central_port}\n")
     monitor_state["cp_id"] = cp_id
 
-
-
     engine_socket = EngineConnector(engine_ip, engine_port, cp_id)
     engine_socket.start()
 
     central_socket = CentralConnector(central_ip, central_port, cp_id)
     central_socket.start()
 
-    # Healthchecks en background
     t_health = threading.Thread(
         target=healthstatus_periodico,
         args=(engine_socket, central_socket),
@@ -545,5 +582,4 @@ if __name__ == "__main__":
     )
     t_health.start()
 
-    # Menú en primer plano (para poder usar input)
     menu_monitor(engine_socket, central_socket)

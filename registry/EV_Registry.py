@@ -24,7 +24,7 @@ log.addHandler(fh)
 
 # ----------------- CONFIG ----------------- #
 REGISTRY_PORT = int(os.getenv("REGISTRY_PORT", 9000))
-API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "https://192.168.1.33:8000")
+API_CENTRAL_BASE = os.getenv("API_CENTRAL_BASE", "https://192.168.1.35:8000")
 
 # ----------------- APP FLASK ----------------- #
 app = Flask(__name__)
