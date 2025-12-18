@@ -12,7 +12,7 @@ import hashlib
 
 # === CONFIGURACIÓN ===
 HEALTHSTATUS_TIEMPO = 1
-REGISTRY_URL = os.getenv("REGISTRY_URL", "https://192.168.1.35:9000")
+REGISTRY_URL = os.getenv("REGISTRY_URL", "https://192.168.1.37:9000")
 
 monitor_state = {
     "cp_id": None,
