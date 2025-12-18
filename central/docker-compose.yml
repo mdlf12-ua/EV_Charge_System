@@ -13,11 +13,14 @@ services:
       DB_USER: usuario
       DB_PASSWORD: contraseña
       DB_NAME: database
+      API_CERT: /app/certs/certificado_api_central.crt
+      API_KEY: /app/certs/clave_privada_api_central.pem
     command: ["python", "-u", "API_Central.py"]
     ports:
       - "8000:8000"
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
   kafka:
     image: apache/kafka:4.0.1
@@ -69,13 +72,15 @@ services:
         condition: service_started
     environment:
       OPENWEATHER_API_KEY: "c469d40985c2772a191a871b666b842d"
-      API_CENTRAL_BASE: "http://api_central:8000"
+      API_CENTRAL_BASE: "https://api_central:8000"
       POLL_INTERVAL: 4
+      CA_CERT: /app/certs/certificado_CA.crt
     command: ["python", "-u", "EV_W.py"]
     tty: true
     stdin_open: true
     volumes:
       - ./logs:/app/logs
+      - ../certs:/app/certs:ro
 
 
   ev_central:
@@ -110,7 +115,7 @@ services:
       dockerfile: Dockerfile.front
     environment:
       FRONT_PORT: 8080
-      API_CENTRAL_BASE: http://api_central:8000
+      API_CENTRAL_BASE: https://api_central:8000
     ports:
       - "8080:8080"
     depends_on:
