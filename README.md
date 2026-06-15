@@ -38,7 +38,7 @@ python EV_CP_E.py <kafka_ip:puerto> <ev_cp_m_ip:puerto>
 
 ---
 
-### 🔍 `EV_CP_M` — Charging Point Monitor
+### `EV_CP_M` — Charging Point Monitor
 Módulo de vigilancia del hardware y software del punto de recarga.
 
 - Verifica el estado de salud del CP cada segundo vía socket
