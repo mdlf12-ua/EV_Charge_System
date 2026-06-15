@@ -2,7 +2,7 @@
 
 > **Práctica de Sistemas Distribuidos · Universidad de Alicante · Curso 25/26**  
 > Implementación de una red de puntos de recarga de vehículos eléctricos gestionada en tiempo real mediante arquitectura distribuida, comunicación por sockets, streaming de eventos con Apache Kafka y servicios REST.
-
+ 
 
 
 ---
